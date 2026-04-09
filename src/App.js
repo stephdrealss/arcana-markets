@@ -452,6 +452,8 @@ export default function ArcanaMarkets() {
  try { return JSON.parse(localStorage.getItem('arcana_activity')||'[]'); } catch(e) { return []; }
  });
  const [livePrices,setLivePrices] = useState({});
+ const [totalVolume, setTotalVolume] = useState("...");
+ const [totalTraders, setTotalTraders] = useState("...");
  const t = dark?THEMES.dark:THEMES.light;
  // Save dark mode preference
  useEffect(()=>{ try { localStorage.setItem('arcana_dark', dark); } catch(e){} },[dark]);
@@ -496,8 +498,6 @@ export default function ArcanaMarkets() {
  const timer=setInterval(()=>setTickIdx(i=>(i+1)%ALL_MARKETS.length),3500);
  return()=>clearInterval(timer);
  },[]);
- const [totalVolume, setTotalVolume] = useState("...");
- const [totalTraders, setTotalTraders] = useState("...");
  useEffect(()=>{
  const fetchStats = async () => {
  try {
