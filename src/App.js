@@ -410,7 +410,6 @@ export default function ArcanaMarkets() {
  useEffect(()=>{ try { localStorage.setItem('arcana_positions', JSON.stringify(positions)); } catch(e){} },[positions]);
  // Save activity
  useEffect(()=>{ try { localStorage.setItem('arcana_activity', JSON.stringify(userActivity)); } catch(e){} },[userActivity]);
- const t = dark?THEMES.dark:THEMES.light;
  const refreshBal = async(addr) => { const b=await getUsdcBalance(addr); setUsdcBalance(b); };
  const connectWallet = async() => {
  if (!window.ethereum){alert("No EVM wallet found! Install MetaMask.");return;}
