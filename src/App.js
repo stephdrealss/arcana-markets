@@ -131,27 +131,76 @@ function Portfolio({t,account,positions}) {
  );
 }
 function Leaderboard({t}) {
- const data = [
- {rank:1,addr:"0xSteph...8a3F",pnl:"+$12,840",trades:47,winRate:"74%",badge:" "},
- {rank:2,addr:"0xArc...9B2c",pnl:"+$8,210",trades:31,winRate:"68%",badge:" "},
- {rank:3,addr:"0xDefi...4E7a",pnl:"+$5,640",trades:28,winRate:"64%",badge:" "},
- {rank:4,addr:"0xAlpha...3F1b",pnl:"+$3,920",trades:22,winRate:"59%",badge:""},
- {rank:5,addr:"0xMoon...7D2e",pnl:"+$2,180",trades:19,winRate:"55%",badge:""},
- ];
+ const [traders, setTraders] = useState([]);
+ const [loading, setLoading] = useState(true);
+ useEffect(()=>{
+ const fetchLeaderboard = async () => {
+ try {
+ const provider = new ethers.providers.JsonRpcProvider(ARC_RPC);
+ const contract = new ethers.Contract(CONTRACT_ADDRESS, [
+ "event SharesPurchased(uint256 indexed marketId, address indexed buyer, bool isYes, uint256 amount)"
+ ], provider);
+ // Get all SharesPurchased events
+ const filter = contract.filters.SharesPurchased();
+ const events = await contract.queryFilter(filter, 0, "latest");
+ // Group by trader
+ const traderMap = {};
+ events.forEach(e => {
+ const addr = e.args.buyer.toLowerCase();
+ const amt = Number(e.args.amount) / 1e6;
+ if (!traderMap[addr]) {
+ traderMap[addr] = { addr, totalVolume: 0, trades: 0 };
+ }
+ traderMap[addr].totalVolume += amt;
+ traderMap[addr].trades += 1;
+ });
+ // Sort by volume
+ const sorted = Object.values(traderMap)
+ .sort((a,b) => b.totalVolume - a.totalVolume)
+ .slice(0, 10)
+ .map((t, i) => ({
+ ...t,
+ rank: i + 1,
+ badge: i === 0 ? " " : i === 1 ? " " : i === 2 ? " " : "",
+ addrShort: t.addr.slice(0,6) + "..." + t.addr.slice(-4)
+ }));
+ setTraders(sorted);
+ } catch(e) {
+ console.error(e);
+ }
+ setLoading(false);
+ };
+ fetchLeaderboard();
+ },[]);
  return (
  <div style={{padding:"32px 0"}}>
  <h2 style={{fontSize:22,fontWeight:800,color:t.text,marginBottom:6}}>Leaderboard</h2>
- <p style={{fontSize:13,color:t.textMuted,marginBottom:24}}>Top traders on Arcana Markets</p>
+ <p style={{fontSize:13,color:t.textMuted,marginBottom:24}}>Top traders on Arcana Markets — live on-chain data </p>
+ {loading?(
+ <div style={{textAlign:"center",padding:"60px 0",color:t.textMuted,fontFamily:"monospace"}}>Loading on-chain data...</div>
+ ):traders.length===0?(
+ <div style={{textAlign:"center",padding:"60px 0",background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12}}>
+ <div style={{fontSize:48,marginBottom:16}}> </div>
+ <p style={{fontSize:14,color:t.textMuted}}>No trades yet — be the first on the leaderboard!</p>
+ </div>
+ ):(
  <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,overflow:"hidden"}}>
- {data.map(row=>(
+ <div style={{display:"flex",padding:"10px 20px",borderBottom:`1px solid ${t.border}`,background:t.surfaceAlt}}>
+ <span style={{width:24,fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>#</span>
+ <span style={{flex:1,fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>TRADER</span>
+ <span style={{fontSize:11,color:t.textMuted,fontFamily:"monospace",minWidth:100,textAlign:"right"}}>VOLUME</span>
+ <span style={{fontSize:11,color:t.textMuted,fontFamily:"monospace",minWidth:60,textAlign:"right"}}>TRADES</span>
+ </div>
+ {traders.map(row=>(
  <div key={row.rank} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 20px",borderBottom:`1px solid ${t.border}`}}>
  <span style={{fontSize:14,width:24,textAlign:"center"}}>{row.badge||`#${row.rank}`}</span>
- <span style={{flex:1,fontSize:13,fontFamily:"monospace",color:t.text}}>{row.addr}</span>
- <span style={{fontSize:13,fontFamily:"monospace",fontWeight:700,color:t.green}}>{row.pnl}</span>
- <span style={{fontSize:12,color:t.textMuted,minWidth:60,textAlign:"right"}}>{row.winRate} WR</span>
+ <span style={{flex:1,fontSize:13,fontFamily:"monospace",color:t.text}}>{row.addrShort}</span>
+ <span style={{fontSize:13,fontFamily:"monospace",fontWeight:700,color:t.green,minWidth:100,textAlign:"right"}}>${row.totalVolume.toFixed(2)}</span>
+ <span style={{fontSize:12,color:t.textMuted,minWidth:60,textAlign:"right"}}>{row.trades} trades</span>
  </div>
  ))}
  </div>
+ )}
  </div>
  );
 }
@@ -447,7 +496,24 @@ export default function ArcanaMarkets() {
  const timer=setInterval(()=>setTickIdx(i=>(i+1)%ALL_MARKETS.length),3500);
  return()=>clearInterval(timer);
  },[]);
- const open=(m,s)=>{setActive(m);setTradeSide(s||null);};
+ const [totalVolume, setTotalVolume] = useState("...");
+ const [totalTraders, setTotalTraders] = useState("...");
+ useEffect(()=>{
+ const fetchStats = async () => {
+ try {
+ const provider = new ethers.providers.JsonRpcProvider(ARC_RPC);
+ const contract = new ethers.Contract(CONTRACT_ADDRESS, [
+ "event SharesPurchased(uint256 indexed marketId, address indexed buyer, bool isYes, uint256 amount)"
+ ], provider);
+ const events = await contract.queryFilter(contract.filters.SharesPurchased(), 0, "latest");
+ const vol = events.reduce((s,e)=>s+Number(e.args.amount)/1e6, 0);
+ const uniqueTraders = new Set(events.map(e=>e.args.buyer.toLowerCase())).size;
+ setTotalVolume(`$${vol.toFixed(2)}`);
+ setTotalTraders(uniqueTraders.toString());
+ } catch(e) { setTotalVolume("—"); setTotalTraders("—"); }
+ };
+ fetchStats();
+ },[]);
  const filtered=ALL_MARKETS
  .filter(m=>cat==="Trending"?m.trending:cat==="All"?true:m.cat===cat)
  .filter(m=>m.title.toLowerCase().includes(q.toLowerCase()))
@@ -567,7 +633,7 @@ export default function ArcanaMarkets() {
  <p style={{fontSize:15,color:t.textMuted,maxWidth:500,lineHeight:1.65}}>{ALL_MARKETS.length} prediction markets. Trade YES or NO with USDC on Arc's EVM testnet.</p>
  </div>
  <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
- {[["$48.2M","Total Volume"],[`${ALL_MARKETS.length}`,"Open Markets"],["34.8K","Traders"]].map(([v,l])=>(
+ {[[totalVolume,"Total Volume"],[`${ALL_MARKETS.length}`,"Open Markets"],[totalTraders,"Traders"]].map(([v,l])=>(
  <div key={l} style={{textAlign:"center",background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"12px 16px"}}>
  <div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",color:t.blue}}>{v}</div>
  <div style={{fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>{l}</div>
