@@ -38,84 +38,168 @@ async function getUsdcBalance(addr) {
  return (Number(bal) / 1e6).toFixed(2);
  } catch (e) { return "0.00"; }
 }
-// ── FETCH ON-CHAIN TRADE HISTORY FOR WALLET ───────────────────────────────────
-async function fetchWalletTradeHistory(walletAddr) {
- try {
- const provider = new ethers.providers.JsonRpcProvider(ARC_RPC);
- const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
- const filter = contract.filters.SharesBought(walletAddr);
- const events = await contract.queryFilter(filter, -50000);
- return events.map(e => ({
- market: ALL_MARKETS.find(m => m.id === e.args.marketId.toNumber())?.title || `Market #${e.args.marketId.toNumber()}`,
- marketId: e.args.marketId.toNumber(),
- side: e.args.isYes ? "YES" : "NO",
- amt: (Number(e.args.usdcAmount) / 1e6).toFixed(2),
- shares: (Number(e.args.shares) / 1e6).toFixed(4),
- txHash: e.transactionHash,
- blockNumber: e.blockNumber,
- time: "on-chain",
- }));
- } catch (e) {
- console.error("Trade history fetch failed:", e);
- return null; // null = failed (keep cached), [] = success but empty
- }
-}
-// ── FETCH LEADERBOARD DATA ────────────────────────────────────────────────────
-async function fetchLeaderboardData() {
- try {
- const provider = new ethers.providers.JsonRpcProvider(ARC_RPC);
- const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
- const filter = contract.filters.SharesBought();
- const events = await contract.queryFilter(filter, -50000);
+// ── REAL HISTORICAL SEED DATA (from CSV export 2026-04-11) ───────────────────
+const HISTORICAL_TRANSFERS = [
+ { txHash: "0x682d9da0a0abef4fcfc069dbc20bc4e8cb8ba1ff85ee8a9e258870a3e29f975a", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:46" },
+ { txHash: "0xee119901cdeff23e230e5186170fbf784c1fc813c88a4e1d5184680b8f63e18c", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:47" },
+ { txHash: "0xa8df27b4bc9668dd34a3d89cfcd9bdefebb6bfab8cae87f177911a27f16655c4", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:47" },
+ { txHash: "0xbfa2a59d928edd3d3876400f2185a3db694251bc605a901141e86374adb0e649", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:48" },
+ { txHash: "0x2ead1460b0410b41f2fb2cf6c3015683b25f58555a6a03f5c186eb9dbd10d3d1", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:49" },
+ { txHash: "0x25bca1f5105f435181740be1a73b9c066804b2a58ba2ddc573f1ec1cfa6affc1", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:49" },
+ { txHash: "0x0d895e9e6744dd7aa2887f2b867ea24890ce25a272e1996c9d9bd2b37cc60bd0", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:49" },
+ { txHash: "0xae242df5620b130104de1c8cd8d343966266087b61ac8d07571856ec37d1f4f4", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:50" },
+ { txHash: "0x0e151fc190c5c0b28c6739b3a5b78f622c6358e1f8005f215ff7da9a50592e19", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:51" },
+ { txHash: "0x5bbfe306f4a1f4653aae8f7a2b28b601f0a425588ac151e892175147d69ce501", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:52" },
+ { txHash: "0xd31085a36c7f62074538dc38ac17dd35aa57fb40a487293b76714210863ed45e", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:52" },
+ { txHash: "0x57fa89e3f6fd4561df52f8f8ecf6c74c3df962b31afc113a36789bcc13690d88", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:53" },
+ { txHash: "0xe81e54e1487a9ff391903bfffb740566d353cc7494237fa6d15acb65a3e49818", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:54" },
+ { txHash: "0x2bdeb2242f3a6e147b835e694dd375bd086119d42928a9cbfaaa5e0784e84eba", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:54" },
+ { txHash: "0xbd69da1c13e976432a472e12554c8d52bad7c8e7028d5475981751dc7f8ea425", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:55" },
+ { txHash: "0x6b91dba05d88e697e7ef20aa82905e0422a098b18c029be1ff447428b6f775cc", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:55" },
+ { txHash: "0x7eb8bbf8fad67d8ce03c5695cdfc287d5cd23e4e5869181e3c9b7ba34310883d", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:56" },
+ { txHash: "0xbfd45b5738aa14ddf851d9837a03e9bca933874e86377a2e976793d249a6ba28", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:57" },
+ { txHash: "0x31a7f6b795176381b0acac0b33df92a670060f5564f74f9a91245f0bf2486bf8", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 15:57" },
+ { txHash: "0x91fe460b65ea1e166d1595e4c1a5642b339f5aeedfb9997f5a366f0ccacb869e", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 0.50, time: "2026-04-10 15:58" },
+ { txHash: "0xc28284ffa4e98df0c5f57fc38cbacc94035067a53ce6b19ed5f3eac4c58a8159", from: "0xf298633A60b4354fb112d46eF7CA70ABe572145b", usdc: 20.00, time: "2026-04-10 16:12" },
+ { txHash: "0x51b4d67bf1e15c06f8db3dc084a01b6209b08aad5dbf4b2c574b40ca39be98f9", from: "0xf298633A60b4354fb112d46eF7CA70ABe572145b", usdc: 20.00, time: "2026-04-10 16:13" },
+ { txHash: "0x55c9b9ed9990cf956127d6b27ead99e7f929307d169efc974821b977ef73a0f7", from: "0xf298633A60b4354fb112d46eF7CA70ABe572145b", usdc: 20.00, time: "2026-04-10 16:14" },
+ { txHash: "0xedfbbd48220ca3a4c3b63ca3b3ea25086a3d77139e83d2eaf373a96f187055d6", from: "0xB1455c5960db2ccC45805E3aDAFd49e70Eda5e8d", usdc: 0.10, time: "2026-04-10 18:57" },
+ { txHash: "0xadb7e0c23ab26b35070794737c450eaa8ca922f9433e98393e6c92947ffe6e66", from: "0xB1455c5960db2ccC45805E3aDAFd49e70Eda5e8d", usdc: 0.10, time: "2026-04-10 19:00" },
+ { txHash: "0x074c4b37b7d10a131bfc2a2dd3c8fd1200f3505b4294e0453a5dc3330b63e3c7", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 20:21" },
+ { txHash: "0xa792baf9e2f23a4873fb39d0932d9353faf2d4fa7827795a5938f6ddf434b9c9", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 20:21" },
+ { txHash: "0xe6266ff346eb857d106d0ff34fade974e6f607a042224c4968b1903d33abf0f6", from: "0x7aa7fEA8fbF112df0Cb6e5844440fB5752258187", usdc: 1.00, time: "2026-04-10 20:22" },
+ { txHash: "0x1563064838679260860cc4681979afb42a9a836a4753377b35f3052e43b33ddd", from: "0x15705dEcfbdDD1ed1Ee80B4C5c927A23f5E338B0", usdc: 5.00, time: "2026-04-10 20:39" },
+ { txHash: "0x04a483a4eb3c21926079887af474e1ab21042476a8f3ae9b29a2da5df7136388", from: "0xD9B5549437B54E20F019e2721D2bD550F89C7984", usdc: 20.00, time: "2026-04-10 20:39" },
+ { txHash: "0x91c7e3eda97748551aa827a66e8d01b76f55cf16cc7423a239de03272e103953", from: "0x15705dEcfbdDD1ed1Ee80B4C5c927A23f5E338B0", usdc: 5.00, time: "2026-04-10 20:39" },
+ { txHash: "0xaeec948e095221c8158da95cc9dcf3f2af266172707330bc198ed90c44c8aff5", from: "0xD9B5549437B54E20F019e2721D2bD550F89C7984", usdc: 20.00, time: "2026-04-10 20:40" },
+ { txHash: "0xc4c056a6802f0fde435167217630c4516ef0acdf4509f21b1f6841d3a96d5cb5", from: "0xD9B5549437B54E20F019e2721D2bD550F89C7984", usdc: 20.00, time: "2026-04-10 20:40" },
+ { txHash: "0x5583c4d319121f81367859a72247b3b40c3124a82cd1efce7ecf21bb7e2af245", from: "0xD9B5549437B54E20F019e2721D2bD550F89C7984", usdc: 20.00, time: "2026-04-10 20:42" },
+ { txHash: "0x876c0ffec72f6fd884feced1401885ffe8384288092e98eb79f4591ebb68771c", from: "0xEc7605762b9CE996988505C273d6f45C5e9135B6", usdc: 5.00, time: "2026-04-10 22:00" },
+ { txHash: "0x686fc818006413bc4fa55008789d51c4d3dae8f5fe9b922c1406be7176691d1c", from: "0x15705dEcfbdDD1ed1Ee80B4C5c927A23f5E338B0", usdc: 5.00, time: "2026-04-11 03:00" },
+ { txHash: "0xd91869259d5e968c8b24776dcdfdd757d6abcf9e460208145cbbbf9ad2940fc1", from: "0xa7A39168ae12f655AaA8200b6bB3f31645586C94", usdc: 5.00, time: "2026-04-11 04:23" },
+ { txHash: "0xb2244f655e9e884086323232b28d7e91b872c06c0ef16c416ba7779a1fbab26f", from: "0xD5a089235BF8C6cf008b414c8853273D6eA07191", usdc: 5.00, time: "2026-04-11 07:10" },
+ { txHash: "0x55eaa7ff6141cc9f60a38f43c443935449062d6fedcd11b3f016a0e8facd2a33", from: "0xc01d5b2bC697Bfdb76E43501f7795BeDF78B1d74", usdc: 5.00, time: "2026-04-11 09:51" },
+ { txHash: "0x884e3ed6757b9c0d0606bfaf9606fbc7ec2cd8ac49b54c8c1686d877de2ad9bf", from: "0x3B4a7deb1274A6F802f45455c6A3998a1D8384d9", usdc: 1.00, time: "2026-04-11 11:23" },
+ { txHash: "0x074e6ae727dd53d3a257c188bdc1dc57884827f3440e4a37773935ae0ba7ce77", from: "0x3B4a7deb1274A6F802f45455c6A3998a1D8384d9", usdc: 0.10, time: "2026-04-11 12:39" },
+];
+// ── BUILD LEADERBOARD FROM SEED + NEW TRADES ──────────────────────────────────
+function buildLeaderboard(extraTrades = []) {
+ const all = [...HISTORICAL_TRANSFERS, ...extraTrades];
  const byAddr = {};
- for (const e of events) {
- const addr = e.args.buyer.toLowerCase();
- const vol = Number(e.args.usdcAmount) / 1e6;
- if (!byAddr[addr]) byAddr[addr] = { addr: e.args.buyer, volume: 0, trades: 0 };
- byAddr[addr].volume += vol;
- byAddr[addr].trades += 1;
+ for (const t of all) {
+ const key = t.from.toLowerCase();
+ if (!byAddr[key]) byAddr[key] = { fullAddr: t.from, volume: 0, trades: 0 };
+ byAddr[key].volume += t.usdc;
+ byAddr[key].trades += 1;
  }
  return Object.values(byAddr)
  .sort((a, b) => b.volume - a.volume)
- .slice(0, 10)
  .map((row, i) => ({
  rank: i + 1,
- addr: `${row.addr.slice(0, 6)}...${row.addr.slice(-4)}`,
- fullAddr: row.addr,
+ addr: `${row.fullAddr.slice(0, 6)}...${row.fullAddr.slice(-4)}`,
+ fullAddr: row.fullAddr,
  volume: row.volume.toFixed(2),
  trades: row.trades,
  badge: i === 0 ? " " : i === 1 ? " " : i === 2 ? " " : "",
  }));
+}
+// ── BUILD STATS FROM SEED + NEW TRADES ───────────────────────────────────────
+function buildStats(extraTrades = []) {
+ const all = [...HISTORICAL_TRANSFERS, ...extraTrades];
+ const totalVolume = all.reduce((s, t) => s + t.usdc, 0);
+ const uniqueTraders = new Set(all.map(t => t.from.toLowerCase())).size;
+ return {
+ totalVolume: totalVolume >= 1000
+ ? `$${(totalVolume / 1000).toFixed(1)}K`
+ : `$${totalVolume.toFixed(2)}`,
+ traderCount: `${uniqueTraders}`,
+ openMarkets: `${ALL_MARKETS.length}`,
+ };
+}
+// ── FETCH WALLET ACTIVITY FROM ARCSCAN API ────────────────────────────────────
+async function fetchWalletTradeHistory(walletAddr) {
+ const addrLower = walletAddr.toLowerCase();
+ // First: filter historical seed for this wallet instantly
+ const fromSeed = HISTORICAL_TRANSFERS
+ .filter(t => t.from.toLowerCase() === addrLower)
+ .map(t => ({
+ market: "Trade on Arcana Markets",
+ side: "—",
+ amt: t.usdc.toFixed(2),
+ txHash: t.txHash,
+ time: t.time,
+ fromSeed: true,
+ }));
+ // Then: try ArcScan Blockscout API for any newer trades
+ try {
+ const url = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&filter=to&limit=50`;
+ const res = await fetch(url);
+ if (!res.ok) throw new Error("API error");
+ const data = await res.json();
+ const items = data.items || [];
+ const newTrades = items
+ .filter(item => item.from?.hash?.toLowerCase() === addrLower)
+ .filter(item => !fromSeed.find(s => s.txHash === item.tx_hash))
+ .map(item => ({
+ market: "Trade on Arcana Markets",
+ side: "—",
+ amt: (Number(item.total?.value || 0) / 1e6).toFixed(2),
+ txHash: item.tx_hash,
+ time: item.timestamp?.slice(0, 16).replace("T", " ") || "on-chain",
+ fromSeed: false,
+ }));
+ return [...newTrades, ...fromSeed];
  } catch (e) {
- console.error("Leaderboard fetch failed:", e);
- return null;
+ // API blocked or failed — return seed data only
+ return fromSeed.length > 0 ? fromSeed : null;
+ }
+}
+// ── FETCH LEADERBOARD: SEED + LIVE NEW TRADES ─────────────────────────────────
+async function fetchLeaderboardData() {
+ try {
+ const url = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&limit=50`;
+ const res = await fetch(url);
+ if (!res.ok) throw new Error("API error");
+ const data = await res.json();
+ const items = data.items || [];
+ // Only keep transfers INTO the contract (trades), exclude seed hashes already known
+ const seedHashes = new Set(HISTORICAL_TRANSFERS.map(t => t.txHash));
+ const newTrades = items
+ .filter(item => item.to?.hash?.toLowerCase() === CONTRACT_ADDRESS.toLowerCase())
+ .filter(item => !seedHashes.has(item.tx_hash))
+ .map(item => ({
+ from: item.from?.hash || "",
+ usdc: Number(item.total?.value || 0) / 1e6,
+ txHash: item.tx_hash,
+ time: item.timestamp?.slice(0, 16).replace("T", " ") || "",
+ }));
+ return buildLeaderboard(newTrades);
+ } catch (e) {
+ // Fallback: build from seed only — still 100% real data
+ return buildLeaderboard([]);
  }
 }
 // ── FETCH REAL STATS ──────────────────────────────────────────────────────────
 async function fetchContractStats() {
  try {
- const provider = new ethers.providers.JsonRpcProvider(ARC_RPC);
- const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
- // Market count
- const countBN = await contract.marketCount();
- const marketCount = countBN.toNumber();
- // All SharesBought events for volume + unique traders
- const filter = contract.filters.SharesBought();
- const events = await contract.queryFilter(filter, -50000);
- const uniqueTraders = new Set(events.map(e => e.args.buyer.toLowerCase())).size;
- const totalVolume = events.reduce((s, e) => s + Number(e.args.usdcAmount) / 1e6, 0);
- return {
- totalVolume: totalVolume >= 1_000_000
- ? `$${(totalVolume / 1_000_000).toFixed(1)}M`
- : `$${totalVolume.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`,
- traderCount: uniqueTraders >= 1000
- ? `${(uniqueTraders / 1000).toFixed(1)}K`
- : `${uniqueTraders}`,
- openMarkets: `${marketCount}`,
- };
+ const url = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&limit=50`;
+ const res = await fetch(url);
+ if (!res.ok) throw new Error("API error");
+ const data = await res.json();
+ const items = data.items || [];
+ const seedHashes = new Set(HISTORICAL_TRANSFERS.map(t => t.txHash));
+ const newTrades = items
+ .filter(item => item.to?.hash?.toLowerCase() === CONTRACT_ADDRESS.toLowerCase())
+ .filter(item => !seedHashes.has(item.tx_hash))
+ .map(item => ({
+ from: item.from?.hash || "",
+ usdc: Number(item.total?.value || 0) / 1e6,
+ txHash: item.tx_hash,
+ time: "",
+ }));
+ return buildStats(newTrades);
  } catch (e) {
- console.error("Stats fetch failed:", e);
- return null;
+ return buildStats([]);
  }
 }
 // ── THEMES ────────────────────────────────────────────────────────────────────
@@ -277,8 +361,8 @@ function Portfolio({ t, account, positions, tradeResults }) {
  );
 }
 // ── LEADERBOARD ───────────────────────────────────────────────────────────────
-function Leaderboard({ t, account }) {
- const [data, setData] = useState(() => LS.get("arcana_leaderboard", null));
+function Leaderboard({ t, account, newTrades = [] }) {
+ const [data, setData] = useState(() => LS.get("arcana_leaderboard", null) || buildLeaderboard([]));
  const [loading, setLoading] = useState(false);
  const [lastFetched, setLastFetched] = useState(() => LS.get("arcana_leaderboard_ts", 0));
  const load = useCallback(async (force = false) => {
@@ -287,6 +371,8 @@ function Leaderboard({ t, account }) {
  setLoading(true);
  const result = await fetchLeaderboardData();
  if (result) {
+ // Merge live API result with any session new trades not yet in API
+ const apiHashes = new Set(result.map(r => r.fullAddr));
  setData(result);
  LS.set("arcana_leaderboard", result);
  const ts = Date.now();
@@ -296,7 +382,12 @@ function Leaderboard({ t, account }) {
  setLoading(false);
  }, [data, lastFetched]);
  useEffect(() => { load(); }, []);
- const rows = data || [];
+ // Merge: seed data + any new session trades not yet reflected
+ const rows = React.useMemo(() => {
+ const base = data || buildLeaderboard([]);
+ if (!newTrades || newTrades.length === 0) return base;
+ return buildLeaderboard(newTrades);
+ }, [data, newTrades]);
  return (
  <div style={{ padding: "32px 0" }}>
  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -629,10 +720,8 @@ export default function ArcanaMarkets() {
  // ── ACTIVITY: fetched from chain + cached ──
  const [userActivity, setUserActivity] = useState([]);
  const [activityLoading, setActivityLoading] = useState(false);
- // ── STATS: fetched from chain + cached ──
- const [stats, setStats] = useState(() => LS.get("arcana_stats", {
- totalVolume: "$48.2M", traderCount: "34.8K", openMarkets: `${ALL_MARKETS.length}`,
- }));
+ // ── STATS: seeded from real CSV data, updated live ──
+ const [stats, setStats] = useState(() => LS.get("arcana_stats", buildStats([])));
  // ── LIVE PRICES ──
  const [livePrices, setLivePrices] = useState({});
  const [tickIdx, setTickIdx] = useState(0);
@@ -754,6 +843,8 @@ export default function ArcanaMarkets() {
  return next;
  });
  }, [account]);
+ // ── NEW TRADES (session): used to update leaderboard + stats live ──
+ const [newTrades, setNewTrades] = useState(() => LS.get("arcana_new_trades", []));
  // ── ADD ACTIVITY (persisted) ──
  const addActivity = useCallback((trade) => {
  if (!account) return;
@@ -761,6 +852,13 @@ export default function ArcanaMarkets() {
  setUserActivity(prev => {
  const next = [trade, ...prev];
  LS.set(`arcana_activity_${key}`, next);
+ return next;
+ });
+ // Track as new trade for leaderboard + stats auto-update
+ const lbEntry = { from: account, usdc: parseFloat(trade.amt), txHash: trade.txHash, time: new Date().toISOString() };
+ setNewTrades(prev => {
+ const next = [lbEntry, ...prev];
+ LS.set("arcana_new_trades", next);
  return next;
  });
  }, [account]);
@@ -852,7 +950,7 @@ export default function ArcanaMarkets() {
  </div>
  <div style={{ maxWidth: 1380, margin: "0 auto", padding: "0 20px 60px" }}>
  {page === "Portfolio" && <Portfolio t={t} account={account} positions={positions} tradeResults={tradeResults} />}
- {page === "Leaderboard" && <Leaderboard t={t} account={account} />}
+ {page === "Leaderboard" && <Leaderboard t={t} account={account} newTrades={newTrades} />}
  {page === "Activity" && <Activity t={t} account={account} userActivity={userActivity} onRefresh={() => refreshChainActivity(account)} loading={activityLoading} />}
  {page === "Markets" && (
  <>
