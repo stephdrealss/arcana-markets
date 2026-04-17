@@ -2436,7 +2436,7 @@ const LEADERBOARD_SEED=[
 {rank:289,fullAddr:"0x247fc7b775232754a3ee8692ffe41bdeb2ebd899",addr:"0x247f...d899",trades:1,badge:""},
 ];
 
-const CHAIN_STATS={totalTrades:1798,uniqueTraders:289};
+const CHAIN_STATS={totalTrades:1798,uniqueTraders:289,totalVolume:14474.94};
 
 // ── FETCH LIVE WALLET HISTORY FROM ARCSCAN ───────────────────────────────────
 async function fetchWalletLiveHistory(walletAddr) {
@@ -2493,8 +2493,13 @@ function buildLeaderboard(newTrades = []) {
 
 // ── BUILD STATS FROM REAL CHAIN DATA ─────────────────────────────────────────
 function buildStats(newTrades = []) {
+  const extraVol = (newTrades || []).reduce((s, t) => s + (parseFloat(t.usdc) || 0), 0);
+  const totalVol = CHAIN_STATS.totalVolume + extraVol;
+  const displayVol = totalVol >= 1000
+    ? `$${(totalVol / 1000).toFixed(1)}K`
+    : `$${totalVol.toFixed(0)}`;
   return {
-    totalVolume: `${CHAIN_STATS.totalTrades + (newTrades?.length || 0)} trades`,
+    totalVolume: displayVol,
     traderCount: `${CHAIN_STATS.uniqueTraders}`,
     openMarkets: `${ALL_MARKETS.length}`,
   };
@@ -3324,9 +3329,11 @@ export default function ArcanaMarkets() {
     setNewTrades(prev => {
       const next = [lbEntry, ...prev];
       LS.set("arcana_new_trades", next);
-      // Update stats live
+      // Update stats live with real volume
+      const extraVol = next.reduce((s, t) => s + (parseFloat(t.usdc) || 0), 0);
+      const totalVol = CHAIN_STATS.totalVolume + extraVol;
       setStats({
-        totalVolume: `${CHAIN_STATS.totalTrades + next.length} trades`,
+        totalVolume: totalVol >= 1000 ? `$${(totalVol/1000).toFixed(1)}K` : `$${totalVol.toFixed(0)}`,
         traderCount: `${CHAIN_STATS.uniqueTraders}`,
         openMarkets: `${ALL_MARKETS.length}`,
       });
@@ -3369,9 +3376,7 @@ export default function ArcanaMarkets() {
       <nav style={{ position: "sticky", top: 0, zIndex: 100, background: t.navBg, backdropFilter: "blur(12px)", borderBottom: `1px solid ${t.border}` }}>
         <div style={{ maxWidth: 1380, margin: "0 auto", padding: "0 20px", display: "flex", alignItems: "center", gap: 16, height: 56 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, cursor: "pointer" }} onClick={() => setPage("Markets")}>
-            <div style={{ width: 30, height: 30, borderRadius: 7, background: t.blue, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ color: "#fff", fontSize: 16, fontWeight: 800 }}>◈</span>
-            </div>
+            <img src="/LOGO.jpg" alt="Arcana Markets" style={{ width: 32, height: 32, borderRadius: 8, objectFit: "cover" }} />
             <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.5, color: t.text }}>arcana</span>
             <span style={{ fontSize: 9, background: t.blueDim, color: t.blue, border: `1px solid ${t.blueBorder}`, padding: "2px 6px", borderRadius: 4, fontFamily: "monospace", fontWeight: 700 }}>TESTNET</span>
           </div>
@@ -3507,7 +3512,7 @@ export default function ArcanaMarkets() {
             {filtered.length === 0 && <div style={{ textAlign: "center", padding: "60px 0", color: t.textMuted }}>No markets found</div>}
 
             <div style={{ marginTop: 52, background: t.navy, borderRadius: 16, padding: "30px 34px", display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }} className="footer-banner">
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: t.blue, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>◈</div>
+              <img src="/LOGO.jpg" alt="Arcana" style={{ width: 48, height: 48, borderRadius: 12, objectFit: "cover", flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
                 <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 5, color: "#fff" }}>Powered by Arc Network</h3>
                 <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>Every prediction trade settles on-chain with real USDC.</p>
