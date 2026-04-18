@@ -3376,7 +3376,7 @@ export default function ArcanaMarkets() {
       <nav style={{ position: "sticky", top: 0, zIndex: 100, background: t.navBg, backdropFilter: "blur(12px)", borderBottom: `1px solid ${t.border}` }}>
         <div style={{ maxWidth: 1380, margin: "0 auto", padding: "0 20px", display: "flex", alignItems: "center", gap: 16, height: 56 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, cursor: "pointer" }} onClick={() => setPage("Markets")}>
-            <img src="/LOGO.jpg" alt="Arcana Markets" style={{ width: 32, height: 32, borderRadius: 10, objectFit: "cover", background: "#2563EB" }} />
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>   <svg width="18" height="18" viewBox="0 0 24 24" fill="none">     <rect x="4" y="4" width="16" height="16" rx="1" transform="rotate(45 12 12)" stroke="white" strokeWidth="2.5" fill="none"/>     <rect x="7" y="7" width="10" height="10" rx="0.5" transform="rotate(45 12 12)" fill="white"/>   </svg> </div>
             <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.5, color: t.text }}>arcana</span>
             <span style={{ fontSize: 9, background: t.blueDim, color: t.blue, border: `1px solid ${t.blueBorder}`, padding: "2px 6px", borderRadius: 4, fontFamily: "monospace", fontWeight: 700 }}>TESTNET</span>
           </div>
@@ -3512,7 +3512,7 @@ export default function ArcanaMarkets() {
             {filtered.length === 0 && <div style={{ textAlign: "center", padding: "60px 0", color: t.textMuted }}>No markets found</div>}
 
             <div style={{ marginTop: 52, background: t.navy, borderRadius: 16, padding: "30px 34px", display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }} className="footer-banner">
-              <img src="/LOGO.jpg" alt="Arcana" style={{ width: 48, height: 48, borderRadius: 14, objectFit: "cover", flexShrink: 0, background: "#2563EB" }} />
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>   <svg width="26" height="26" viewBox="0 0 24 24" fill="none">     <rect x="4" y="4" width="16" height="16" rx="1" transform="rotate(45 12 12)" stroke="white" strokeWidth="2.5" fill="none"/>     <rect x="7" y="7" width="10" height="10" rx="0.5" transform="rotate(45 12 12)" fill="white"/>   </svg> </div>
               <div style={{ flex: 1 }}>
                 <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 5, color: "#fff" }}>Powered by Arc Network</h3>
                 <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>Every prediction trade settles on-chain with real USDC.</p>
