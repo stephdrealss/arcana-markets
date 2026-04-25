@@ -1392,24 +1392,26 @@ export default function ArcanaMarkets(){
 
         {page==="Markets"&&(
           <>
-            <div style={{padding:"44px 0 32px"}}>
-              <div style={{display:"inline-flex",alignItems:"center",gap:6,background:t.blueDim,border:`1px solid ${t.blueBorder}`,borderRadius:6,padding:"4px 10px",marginBottom:16}}>
-                <span style={{fontSize:10,fontWeight:700,color:t.blue,fontFamily:"monospace",letterSpacing:1}}>◈ ARC NETWORK TESTNET</span>
+            <div style={{padding:"44px 0 32px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:32,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:280}}>
+                <div style={{display:"inline-flex",alignItems:"center",gap:6,background:t.blueDim,border:`1px solid ${t.blueBorder}`,borderRadius:6,padding:"4px 10px",marginBottom:16}}>
+                  <span style={{fontSize:10,fontWeight:700,fontFamily:"monospace",letterSpacing:1}}><span style={{color:t.green}}>●</span><span style={{color:t.blue}}> ARC TESTNET · LIVE</span></span>
+                </div>
+                <h1 style={{fontSize:"clamp(36px,6vw,72px)",fontWeight:800,letterSpacing:-2,color:t.text,lineHeight:1.05,marginBottom:12}}>
+                  Arcana Markets
+                </h1>
+                <p style={{fontSize:18,fontWeight:800,color:t.text,marginBottom:8,lineHeight:1.2,letterSpacing:-0.3}}>
+                  Predict. Trade. Win USDC.
+                </p>
+                <p style={{fontSize:14,color:t.textMuted,lineHeight:1.6}}>
+                  {ALL_MARKETS.length} prediction markets. Trade YES or NO with USDC on Arc's EVM testnet.
+                </p>
               </div>
-              <h1 style={{fontSize:"clamp(36px,6vw,72px)",fontWeight:800,letterSpacing:-2,color:t.text,lineHeight:1.05,marginBottom:16}}>
-                Arcana Markets
-              </h1>
-              <p style={{fontSize:16,color:t.textMuted,marginBottom:6,lineHeight:1.6}}>
-                Predict. Trade. Win USDC.
-              </p>
-              <p style={{fontSize:14,color:t.textMuted,marginBottom:32,lineHeight:1.6}}>
-                {ALL_MARKETS.length} prediction markets. Trade YES or NO with USDC on Arc's EVM testnet.
-              </p>
-              <div style={{display:"flex",gap:16,flexWrap:"wrap"}} className="hero-stats">
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-start"}} className="hero-stats">
                 {[[stats.totalVolume,"Total Volume"],[stats.openMarkets,"Open Markets"],[stats.traderCount,"Traders"]].map(([v,l])=>(
-                  <div key={l} style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"18px 28px",minWidth:140}}>
-                    <div style={{fontSize:26,fontWeight:800,fontFamily:"monospace",color:t.blue,marginBottom:4}}>{v}</div>
-                    <div style={{fontSize:12,color:t.textMuted,fontFamily:"monospace"}}>{l}</div>
+                  <div key={l} style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"20px 28px",minWidth:130,textAlign:"center"}}>
+                    <div style={{fontSize:28,fontWeight:800,fontFamily:"monospace",color:t.blue,marginBottom:6,letterSpacing:-1}}>{v}</div>
+                    <div style={{fontSize:12,color:t.textMuted,fontFamily:"monospace",letterSpacing:0.5}}>{l}</div>
                   </div>
                 ))}
               </div>
