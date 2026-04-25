@@ -317,7 +317,7 @@ const THEMES = {
   dark: {
     bg:"#07061A",surface:"#0F0D22",surfaceAlt:"#15122E",surfaceHov:"#1A1735",
     text:"#E8E8F0",textMuted:"#8B8BA8",textLight:"#5A5A72",
-    blue:"#3B82F6",blueDim:"rgba(59,130,246,0.1)",blueBorder:"rgba(59,130,246,0.25)",
+    blue:"#4F8EF7",blueDim:"rgba(79,142,247,0.12)",blueBorder:"rgba(79,142,247,0.3)",
     navy:"#1A1735",border:"rgba(255,255,255,0.08)",borderStrong:"rgba(255,255,255,0.15)",
     green:"#22C55E",greenBg:"rgba(34,197,94,0.1)",greenBorder:"rgba(34,197,94,0.35)",
     red:"#F87171",redBg:"rgba(248,113,113,0.08)",redBorder:"rgba(248,113,113,0.3)",
@@ -1013,7 +1013,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
 
   const placeOrder=async()=>{
     if(!account){setError("Connect your wallet first!");return;}
-    if(!amt||parseFloat(amt)<=0){setError("Enter an amount to trade");return;}
+    if(!amt||parseFloat(amt)<0.01){setError("Minimum trade is 0.01 USDC");return;}
     if(parseFloat(usdcBalance)<parseFloat(amt)){setError(`Insufficient USDC. You have ${usdcBalance}`);return;}
     setLoading(true);setError("");
     try{
@@ -1097,7 +1097,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                   <span style={{padding:"12px 14px",color:t.textMuted,fontFamily:"monospace",fontSize:12}}>USDC</span>
                 </div>
                 <div style={{display:"flex",gap:6,marginTop:8}}>
-                  {["5","10","25","50","100"].map(v=>(
+                  {["0.01","0.1","1","10","50"].map(v=>(
                     <button key={v} onClick={()=>setAmt(v)} style={{flex:1,padding:"6px 0",background:amt===v?t.blue:t.bg,border:`1px solid ${amt===v?t.blue:t.border}`,borderRadius:6,color:amt===v?"#fff":t.textMuted,fontSize:11,cursor:"pointer",fontFamily:"monospace"}}>${v}</button>
                   ))}
                 </div>
@@ -1328,7 +1328,7 @@ export default function ArcanaMarkets(){
           </div>
           <div className="nav-right" style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
             {account&&<div className="usdc-badge" style={{padding:"6px 12px",background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:8,fontSize:12,color:t.green,fontFamily:"monospace",fontWeight:700}}>${usdcBalance} USDC</div>}
-            <button onClick={toggleTheme} style={{position:"relative",width:52,height:28,borderRadius:14,background:dark?"#3B82F6":"#E5E7EB",border:"none",cursor:"pointer",transition:"background 0.3s",padding:0,flexShrink:0}}>
+            <button onClick={toggleTheme} style={{position:"relative",width:52,height:28,borderRadius:14,background:dark?"#4F8EF7":"#E5E7EB",border:"none",cursor:"pointer",transition:"background 0.3s",padding:0,flexShrink:0}}>
               <div style={{position:"absolute",top:3,left:dark?26:3,width:22,height:22,borderRadius:"50%",background:"#fff",transition:"left 0.3s",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>
                 {dark?"🌙":"☀️"}
               </div>
@@ -1392,23 +1392,24 @@ export default function ArcanaMarkets(){
 
         {page==="Markets"&&(
           <>
-            <div style={{padding:"44px 0 32px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:24,flexWrap:"wrap"}}>
-              <div>
-                <div style={{display:"inline-flex",alignItems:"center",gap:6,background:t.blueDim,border:`1px solid ${t.blueBorder}`,borderRadius:6,padding:"4px 10px",marginBottom:12}}>
-                  <span style={{fontSize:10,fontWeight:700,color:t.blue,fontFamily:"monospace",letterSpacing:1}}>◈ ARC TESTNET · LIVE</span>
-                </div>
-                <h1 className="hero-title" style={{fontSize:"clamp(26px,4vw,46px)",fontWeight:800,letterSpacing:-1.5,color:t.text,lineHeight:1.1,marginBottom:10}}>
-                  Predict.<br/>Trade.<br/>Win USDC.
-                </h1>
-                <p style={{fontSize:15,color:t.textMuted,maxWidth:500,lineHeight:1.65}}>
-                  {ALL_MARKETS.length} markets · Real USDC · Built on Arc Network
-                </p>
+            <div style={{padding:"44px 0 32px"}}>
+              <div style={{display:"inline-flex",alignItems:"center",gap:6,background:t.blueDim,border:`1px solid ${t.blueBorder}`,borderRadius:6,padding:"4px 10px",marginBottom:16}}>
+                <span style={{fontSize:10,fontWeight:700,color:t.blue,fontFamily:"monospace",letterSpacing:1}}>◈ ARC NETWORK TESTNET</span>
               </div>
-              <div style={{display:"flex",gap:12,flexWrap:"wrap"}} className="hero-stats">
+              <h1 style={{fontSize:"clamp(36px,6vw,72px)",fontWeight:800,letterSpacing:-2,color:t.text,lineHeight:1.05,marginBottom:16}}>
+                Arcana Markets
+              </h1>
+              <p style={{fontSize:16,color:t.textMuted,marginBottom:6,lineHeight:1.6}}>
+                Predict. Trade. Win USDC.
+              </p>
+              <p style={{fontSize:14,color:t.textMuted,marginBottom:32,lineHeight:1.6}}>
+                {ALL_MARKETS.length} prediction markets. Trade YES or NO with USDC on Arc's EVM testnet.
+              </p>
+              <div style={{display:"flex",gap:16,flexWrap:"wrap"}} className="hero-stats">
                 {[[stats.totalVolume,"Total Volume"],[stats.openMarkets,"Open Markets"],[stats.traderCount,"Traders"]].map(([v,l])=>(
-                  <div key={l} style={{textAlign:"center",background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"16px 24px"}}>
-                    <div style={{fontSize:20,fontWeight:800,fontFamily:"monospace",color:t.blue}}>{v}</div>
-                    <div style={{fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>{l}</div>
+                  <div key={l} style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"18px 28px",minWidth:140}}>
+                    <div style={{fontSize:26,fontWeight:800,fontFamily:"monospace",color:t.blue,marginBottom:4}}>{v}</div>
+                    <div style={{fontSize:12,color:t.textMuted,fontFamily:"monospace"}}>{l}</div>
                   </div>
                 ))}
               </div>
