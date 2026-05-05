@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
+import { WalletModal, BridgePanel, UnifiedBalancePanel, ERC8183JobPanel } from './ArcanaIntegrations';
 
 // ── CONTRACT CONFIG ───────────────────────────────────────────────────────────
 const CONTRACT_ADDRESS = "0x443a47eF1025e047879b1BA08c94e6dedB354D54";
