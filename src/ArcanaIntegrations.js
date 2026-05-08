@@ -325,7 +325,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
             borderRadius: 20,
             width: "100%",
             maxWidth: 420,
-            overflow: "hidden",
+            overflow: "visible",
             boxShadow: "0 24px 80px rgba(0,0,0,0.4)",
           }}>
             {/* Header */}
@@ -343,7 +343,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
               <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: t.textMuted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
             </div>
 
-            <div style={{ padding: "16px 24px 24px" }}>
+            <div style={{ padding: "16px 24px 24px", maxHeight: "70vh", overflowY: "auto" }}>
 
               {/* ── CIRCLE WALLET (PRIMARY) ── */}
               <div style={{
