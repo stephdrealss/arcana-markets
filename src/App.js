@@ -1340,8 +1340,6 @@ export default function ArcanaMarkets(){
               </button>
             ):(
               <WalletModal t={t} account={account} onConnected={(addr) => { setAccount(addr); LS.set("arcana_last_wallet", addr); refreshBal(addr); loadWalletData(addr); checkOwner(addr); }} onDisconnected={disconnectWallet} />
-                Connect Wallet
-              </button>
             )}
           </div>
         </div>
