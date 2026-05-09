@@ -271,8 +271,9 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
           zIndex: 2147483647,
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
-          padding: 16,
+          justifyContent: "flex-end",
+          flexDirection: "column",
+          padding: "0 16px 32px",
         }}>
           <div ref={modalRef} style={{
             background: t.surface,
@@ -280,7 +281,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
             borderRadius: 20,
             width: "100%",
             maxWidth: 420,
-            maxHeight: "88vh",
+            maxHeight: "80vh",
             overflowY: "auto",
             boxShadow: "0 32px 100px rgba(0,0,0,0.8)",
           }}>
