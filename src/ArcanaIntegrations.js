@@ -213,7 +213,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   const EVM_WALLETS = [
     { id: "metamask",    label: "MetaMask",       icon: "🦊", check: () => window.ethereum?.isMetaMask },
     { id: "coinbase",    label: "Coinbase Wallet", icon: "🔵", check: () => window.ethereum?.isCoinbaseWallet },
-    { id: "walletconnect",label: "WalletConnect",  icon: "🔵", check: () => true }, // Always show WC
+    { id: "walletconnect",label: "WalletConnect",  icon: "🔗", check: () => true }, // Always show WC
     { id: "injected",   label: "Browser Wallet",  icon: "🌐", check: () => !!window.ethereum },
   ];
 
@@ -314,8 +314,6 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
           background: "rgba(0,0,0,0.6)",
           backdropFilter: "blur(6px)",
           zIndex: 2147483647,
-          transform: "translateZ(0)",
-          willChange: "transform",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
