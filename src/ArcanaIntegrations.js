@@ -137,32 +137,20 @@ const USDC_ABI_FULL = [
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HOOK: useCircleWallet
-// Manages Circle Programmable Wallet state (email/PIN based)
 // ─────────────────────────────────────────────────────────────────────────────
 export function useCircleWallet() {
-  const [circleAddress, setCircleAddress]   = useState(null);
-  const [circleLoading, setCircleLoading]   = useState(false);
-  const [circleEmail, setCircleEmail]       = useState("");
-  const [circleError, setCircleError]       = useState("");
-  const [circleStep, setCircleStep]         = useState("idle"); // idle | email | pin | connected
+  const [circleAddress, setCircleAddress] = useState(null);
+  const [circleLoading, setCircleLoading] = useState(false);
+  const [circleEmail, setCircleEmail]     = useState("");
+  const [circleError, setCircleError]     = useState("");
+  const [circleStep, setCircleStep]       = useState("idle");
 
-  // Initialize Circle Web3 Services SDK
-  // In production: import { W3SSdk } from "@circle-fin/w3s-pw-web-sdk"
-  // and initialize with your CIRCLE_APP_ID
   const initCircleSDK = useCallback(async (email) => {
     setCircleLoading(true);
     setCircleError("");
     try {
-      // Circle W3S SDK initialization
-      // const sdk = new W3SSdk({ appSettings: { appId: CIRCLE_APP_ID } });
-      // const { data } = await createUser(email);
-      // const { userToken, encryptionKey, challengeId } = data;
-      // sdk.setAuthentication({ userToken, encryptionKey });
-      // sdk.execute(challengeId, (err, result) => { ... });
-      //
-      // For demo/testnet purposes, we simulate the Circle wallet flow:
-      const simulatedAddr = "0xCircle" + email.replace(/\W/g, "").slice(0, 36).padEnd(36, "0");
-      await new Promise(r => setTimeout(r, 1200)); // Simulate SDK round-trip
+      const simulatedAddr = "0xCircle" + email.replace(/\W/g,"").slice(0,36).padEnd(36,"0");
+      await new Promise(r => setTimeout(r, 1200));
       setCircleAddress(simulatedAddr);
       setCircleStep("connected");
     } catch (e) {
@@ -178,74 +166,72 @@ export function useCircleWallet() {
     setCircleError("");
   }, []);
 
-  return {
-    circleAddress, circleLoading, circleEmail, setCircleEmail,
-    circleError, circleStep, setCircleStep, initCircleSDK, disconnectCircle,
-  };
+  return { circleAddress, circleLoading, circleEmail, setCircleEmail, circleError, circleStep, setCircleStep, initCircleSDK, disconnectCircle };
 }
+
+// WalletConnect SVG Logo
+const WalletConnectSVG = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <rect width="24" height="24" rx="6" fill="#3B99FC"/>
+    <path d="M6.44 9.64c3.07-3.01 8.06-3.01 11.12 0l.37.36a.38.38 0 010 .55l-1.27 1.24a.2.2 0 01-.28 0l-.51-.5c-2.14-2.1-5.61-2.1-7.75 0l-.55.54a.2.2 0 01-.28 0L6.02 10.6a.38.38 0 010-.55l.42-.4zm13.74 2.56l1.13 1.1a.38.38 0 010 .55l-5.08 4.97a.4.4 0 01-.56 0l-3.6-3.53a.1.1 0 00-.14 0l-3.6 3.53a.4.4 0 01-.56 0L2.69 13.85a.38.38 0 010-.55l1.13-1.1a.4.4 0 01.56 0l3.6 3.53a.1.1 0 00.14 0l3.6-3.53a.4.4 0 01.56 0l3.6 3.53a.1.1 0 00.14 0l3.6-3.53a.4.4 0 01.56 0z" fill="white"/>
+  </svg>
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENT: WalletModal
-// Circle Wallet (primary) + all EVM wallets (secondary)
-// Drop-in replacement for the existing Connect Wallet button
 // ─────────────────────────────────────────────────────────────────────────────
 export function WalletModal({ t, account, onConnected, onDisconnected }) {
-  const [open, setOpen]           = useState(false);
-  const [evmLoading, setEvmLoading] = useState(null); // which EVM wallet is loading
-  const [evmError, setEvmError]   = useState("");
-  const modalRef                  = useRef(null);
+  const [open, setOpen]             = useState(false);
+  const [evmLoading, setEvmLoading] = useState(null);
+  const [evmError, setEvmError]     = useState("");
+  const modalRef                    = useRef(null);
 
-  const {
-    circleAddress, circleLoading, circleEmail, setCircleEmail,
-    circleError, circleStep, setCircleStep, initCircleSDK, disconnectCircle,
-  } = useCircleWallet();
+  const { circleAddress, circleLoading, circleEmail, setCircleEmail, circleError, circleStep, setCircleStep, initCircleSDK, disconnectCircle } = useCircleWallet();
 
-  // Close modal on outside click
   useEffect(() => {
-    const handler = (e) => {
-      if (open && modalRef.current && !modalRef.current.contains(e.target)) setOpen(false);
-    };
+    if (!open) return;
+    const handler = (e) => { if (modalRef.current && !modalRef.current.contains(e.target)) setOpen(false); };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // ── EVM wallet connectors ──────────────────────────────────────────────────
+  // Lock body scroll when modal open
+  useEffect(() => {
+    if (open) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
   const EVM_WALLETS = [
-    { id: "metamask",    label: "MetaMask",       icon: "🦊", check: () => window.ethereum?.isMetaMask },
-    { id: "coinbase",    label: "Coinbase Wallet", icon: "🔵", check: () => window.ethereum?.isCoinbaseWallet },
-    { id: "walletconnect",label: "WalletConnect",  icon: "🔗", check: () => true }, // Always show WC
-    { id: "injected",   label: "Browser Wallet",  icon: "🌐", check: () => !!window.ethereum },
+    { id:"metamask",      label:"MetaMask",       icon:<span style={{fontSize:22}}>🦊</span> },
+    { id:"coinbase",      label:"Coinbase Wallet", icon:<span style={{fontSize:22}}>🔵</span> },
+    { id:"walletconnect", label:"WalletConnect",   icon:<WalletConnectSVG /> },
+    { id:"injected",      label:"Browser Wallet",  icon:<span style={{fontSize:22}}>🌐</span> },
   ];
 
   const connectEVM = async (walletId) => {
-    if (!window.ethereum) { setEvmError("No EVM wallet detected. Install MetaMask or a compatible wallet."); return; }
-    setEvmLoading(walletId);
-    setEvmError("");
+    if (!window.ethereum) { setEvmError("No EVM wallet found. Install MetaMask."); return; }
+    setEvmLoading(walletId); setEvmError("");
     try {
-      await window.ethereum.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] });
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      if (!accounts?.length) throw new Error("No accounts returned");
-      // Switch to Arc Testnet
+      await window.ethereum.request({ method:"wallet_requestPermissions", params:[{eth_accounts:{}}] });
+      const accounts = await window.ethereum.request({ method:"eth_requestAccounts" });
+      if (!accounts?.length) throw new Error("No accounts");
       try {
-        await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ARC_CHAIN_ID }] });
+        await window.ethereum.request({ method:"wallet_switchEthereumChain", params:[{chainId:"0x4cef52"}] });
       } catch (e) {
         if (e.code === 4902) {
-          await window.ethereum.request({
-            method: "wallet_addEthereumChain",
-            params: [{
-              chainId: ARC_CHAIN_ID,
-              chainName: "Arc Testnet",
-              nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-              rpcUrls: [ARC_RPC],
-              blockExplorerUrls: ["https://testnet.arcscan.app"],
-            }],
-          });
+          await window.ethereum.request({ method:"wallet_addEthereumChain", params:[{
+            chainId:"0x4cef52", chainName:"Arc Testnet",
+            nativeCurrency:{name:"USDC",symbol:"USDC",decimals:18},
+            rpcUrls:["https://rpc.testnet.arc.network"],
+            blockExplorerUrls:["https://testnet.arcscan.app"],
+          }]});
         }
       }
       onConnected(accounts[0]);
       setOpen(false);
     } catch (e) {
-      if (e.code !== 4001) setEvmError(e.message?.slice(0, 80) || "Connection failed");
+      if (e.code !== 4001) setEvmError(e.message?.slice(0,80) || "Connection failed");
     }
     setEvmLoading(null);
   };
@@ -261,63 +247,32 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
     if (onDisconnected) onDisconnected();
   };
 
-  // Already connected state — show address pill
   if (account) {
     return (
-      <button
-        onClick={handleDisconnect}
-        style={{
-          padding: "7px 16px",
-          background: t.blue,
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-          fontSize: 12,
-          fontWeight: 700,
-          cursor: "pointer",
-          fontFamily: "monospace",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        <span style={{ opacity: 0.7 }}>◈</span>
-        {account.slice(0, 6)}...{account.slice(-4)}
-        <span style={{ opacity: 0.5, marginLeft: 2 }}>✕</span>
+      <button onClick={handleDisconnect} style={{ padding:"7px 16px", background:t.blue, color:"#fff", border:"none", borderRadius:8, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"monospace", display:"flex", alignItems:"center", gap:6 }}>
+        <span style={{opacity:0.7}}>◈</span>
+        {account.slice(0,6)}...{account.slice(-4)}
+        <span style={{opacity:0.5,marginLeft:2}}>✕</span>
       </button>
     );
   }
 
   return (
     <>
-      {/* Trigger button */}
-      <button
-        onClick={() => setOpen(true)}
-        style={{
-          padding: "7px 16px",
-          background: t.blue,
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-          fontSize: 13,
-          fontWeight: 700,
-          cursor: "pointer",
-        }}
-      >
+      <button onClick={() => setOpen(true)} style={{ padding:"7px 16px", background:t.blue, color:"#fff", border:"none", borderRadius:8, fontSize:13, fontWeight:700, cursor:"pointer" }}>
         Connect Wallet
       </button>
 
-      {/* Modal overlay */}
       {open && (
         <div style={{
-          position: "fixed", inset: 0,
-          background: "rgba(0,0,0,0.6)",
-          backdropFilter: "blur(6px)",
+          position: "fixed",
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.85)",
           zIndex: 2147483647,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: 20,
+          padding: 16,
         }}>
           <div ref={modalRef} style={{
             background: t.surface,
@@ -325,148 +280,75 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
             borderRadius: 20,
             width: "100%",
             maxWidth: 420,
+            maxHeight: "88vh",
             overflowY: "auto",
-            boxShadow: "0 24px 80px rgba(0,0,0,0.4)",
+            boxShadow: "0 32px 100px rgba(0,0,0,0.8)",
           }}>
             {/* Header */}
-            <div style={{
-              padding: "20px 24px 16px",
-              borderBottom: `1px solid ${t.border}`,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}>
+            <div style={{ padding:"18px 24px 14px", borderBottom:`1px solid ${t.border}`, display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:t.surface, zIndex:1 }}>
               <div>
-                <p style={{ fontSize: 17, fontWeight: 800, color: t.text, margin: 0 }}>Connect to Arcana</p>
-                <p style={{ fontSize: 12, color: t.textMuted, margin: "3px 0 0", fontFamily: "monospace" }}>Arc Testnet · USDC</p>
+                <p style={{ fontSize:17, fontWeight:800, color:t.text, margin:0 }}>Connect to Arcana</p>
+                <p style={{ fontSize:11, color:t.textMuted, margin:"2px 0 0", fontFamily:"monospace" }}>Arc Testnet · USDC · Powered by Circle</p>
               </div>
-              <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: t.textMuted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+              <button onClick={() => setOpen(false)} style={{ background:"none", border:"none", color:t.textMuted, fontSize:22, cursor:"pointer", lineHeight:1, padding:"4px 8px" }}>✕</button>
             </div>
 
-            <div style={{ padding: "16px 24px 24px" }}>
+            <div style={{ padding:"16px 24px 24px" }}>
 
-              {/* ── CIRCLE WALLET (PRIMARY) ── */}
-              <div style={{
-                background: `linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #1e40af 100%)`,
-                borderRadius: 14,
-                padding: "18px 20px",
-                marginBottom: 16,
-                border: "1.5px solid rgba(255,255,255,0.1)",
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 10,
-                    background: "rgba(255,255,255,0.15)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 18,
-                  }}>⬡</div>
-                  <div>
-                    <p style={{ color: "#fff", fontWeight: 800, fontSize: 14, margin: 0 }}>Circle Wallet</p>
-                    <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 11, margin: 0, fontFamily: "monospace" }}>Email + PIN · No seed phrase needed</p>
+              {/* CIRCLE WALLET */}
+              <div style={{ background:"linear-gradient(135deg,#1d4ed8,#2563eb,#1e40af)", borderRadius:14, padding:"16px 18px", marginBottom:14, border:"1.5px solid rgba(255,255,255,0.15)" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+                  <div style={{ width:36, height:36, borderRadius:10, background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>⬡</div>
+                  <div style={{ flex:1 }}>
+                    <p style={{ color:"#fff", fontWeight:800, fontSize:14, margin:0 }}>Circle Wallet</p>
+                    <p style={{ color:"rgba(255,255,255,0.65)", fontSize:11, margin:0, fontFamily:"monospace" }}>Email + PIN · No seed phrase</p>
                   </div>
-                  <span style={{
-                    marginLeft: "auto",
-                    fontSize: 9, fontWeight: 700,
-                    background: "rgba(255,255,255,0.2)",
-                    color: "#fff",
-                    padding: "3px 8px",
-                    borderRadius: 4,
-                    fontFamily: "monospace",
-                  }}>RECOMMENDED</span>
+                  <span style={{ fontSize:9, fontWeight:700, background:"rgba(255,255,255,0.2)", color:"#fff", padding:"3px 8px", borderRadius:4, fontFamily:"monospace", flexShrink:0 }}>RECOMMENDED</span>
                 </div>
-
-                {circleStep === "email" || circleStep === "idle" ? (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input
-                      type="email"
-                      placeholder="your@email.com"
-                      value={circleEmail}
+                {(circleStep === "idle" || circleStep === "email") && (
+                  <div style={{ display:"flex", gap:8 }}>
+                    <input type="email" placeholder="your@email.com" value={circleEmail}
                       onChange={e => setCircleEmail(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && handleCircleConnect()}
-                      style={{
-                        flex: 1,
-                        background: "rgba(255,255,255,0.1)",
-                        border: "1px solid rgba(255,255,255,0.2)",
-                        borderRadius: 8,
-                        padding: "9px 12px",
-                        color: "#fff",
-                        fontSize: 13,
-                        outline: "none",
-                      }}
+                      style={{ flex:1, background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, outline:"none", minWidth:0 }}
                     />
-                    <button
-                      onClick={handleCircleConnect}
-                      disabled={circleLoading}
-                      style={{
-                        padding: "9px 16px",
-                        background: "#fff",
-                        color: "#1d4ed8",
-                        border: "none",
-                        borderRadius: 8,
-                        fontWeight: 800,
-                        fontSize: 13,
-                        cursor: circleLoading ? "not-allowed" : "pointer",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <button onClick={handleCircleConnect} disabled={circleLoading}
+                      style={{ padding:"9px 14px", background:"#fff", color:"#1d4ed8", border:"none", borderRadius:8, fontWeight:800, fontSize:13, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
                       {circleLoading ? "⏳" : "Continue →"}
                     </button>
                   </div>
-                ) : circleStep === "connected" ? (
-                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "monospace" }}>
-                    ✓ Connected · {circleAddress?.slice(0, 10)}...
-                  </div>
-                ) : null}
-
-                {circleError && (
-                  <p style={{ color: "#fca5a5", fontSize: 11, fontFamily: "monospace", margin: "8px 0 0" }}>✕ {circleError}</p>
                 )}
+                {circleStep === "connected" && (
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.8)", fontFamily:"monospace" }}>✓ Connected · {circleAddress?.slice(0,10)}...</div>
+                )}
+                {circleError && <p style={{ color:"#fca5a5", fontSize:11, fontFamily:"monospace", margin:"8px 0 0" }}>✕ {circleError}</p>}
               </div>
 
-              {/* ── DIVIDER ── */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                <div style={{ flex: 1, height: 1, background: t.border }} />
-                <span style={{ fontSize: 11, color: t.textMuted, fontFamily: "monospace" }}>OR USE EVM WALLET</span>
-                <div style={{ flex: 1, height: 1, background: t.border }} />
+              {/* DIVIDER */}
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+                <div style={{ flex:1, height:1, background:t.border }} />
+                <span style={{ fontSize:10, color:t.textMuted, fontFamily:"monospace", whiteSpace:"nowrap" }}>OR USE EVM WALLET</span>
+                <div style={{ flex:1, height:1, background:t.border }} />
               </div>
 
-              {/* ── EVM WALLETS (SECONDARY) ── */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {/* EVM WALLETS */}
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 {EVM_WALLETS.map(w => (
-                  <button
-                    key={w.id}
-                    onClick={() => connectEVM(w.id)}
-                    disabled={!!evmLoading}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      padding: "12px 16px",
-                      background: t.bg,
-                      border: `1.5px solid ${evmLoading === w.id ? t.blue : t.border}`,
-                      borderRadius: 12,
-                      cursor: evmLoading ? "not-allowed" : "pointer",
-                      transition: "all 0.15s",
-                      width: "100%",
-                    }}
-                    onMouseEnter={e => { if (!evmLoading) e.currentTarget.style.borderColor = t.blue; }}
-                    onMouseLeave={e => { if (evmLoading !== w.id) e.currentTarget.style.borderColor = t.border; }}
-                  >
-                    <span style={{ fontSize: 20 }}>{w.icon}</span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: t.text, flex: 1, textAlign: "left" }}>{w.label}</span>
-                    {evmLoading === w.id
-                      ? <span style={{ fontSize: 11, color: t.blue, fontFamily: "monospace" }}>Connecting...</span>
-                      : <span style={{ fontSize: 11, color: t.textMuted, fontFamily: "monospace" }}>→</span>
-                    }
+                  <button key={w.id} onClick={() => connectEVM(w.id)} disabled={!!evmLoading}
+                    style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", background:t.bg, border:`1.5px solid ${evmLoading===w.id?t.blue:t.border}`, borderRadius:12, cursor:evmLoading?"not-allowed":"pointer", width:"100%", transition:"border-color 0.15s" }}
+                    onMouseEnter={e => { if(!evmLoading) e.currentTarget.style.borderColor=t.blue; }}
+                    onMouseLeave={e => { if(evmLoading!==w.id) e.currentTarget.style.borderColor=t.border; }}>
+                    <span style={{ display:"flex", alignItems:"center", justifyContent:"center", width:28, flexShrink:0 }}>{w.icon}</span>
+                    <span style={{ fontSize:13, fontWeight:600, color:t.text, flex:1, textAlign:"left" }}>{w.label}</span>
+                    {evmLoading===w.id
+                      ? <span style={{ fontSize:11, color:t.blue, fontFamily:"monospace" }}>Connecting...</span>
+                      : <span style={{ fontSize:11, color:t.textMuted }}>→</span>}
                   </button>
                 ))}
               </div>
 
-              {evmError && (
-                <p style={{ color: t.red, fontSize: 11, fontFamily: "monospace", margin: "10px 0 0" }}>✕ {evmError}</p>
-              )}
-
-              <p style={{ fontSize: 10, color: t.textMuted, fontFamily: "monospace", textAlign: "center", marginTop: 14 }}>
+              {evmError && <p style={{ color:t.red, fontSize:11, fontFamily:"monospace", margin:"10px 0 0" }}>✕ {evmError}</p>}
+              <p style={{ fontSize:10, color:t.textMuted, fontFamily:"monospace", textAlign:"center", marginTop:14 }}>
                 Connects to Arc Testnet · USDC settlement · Powered by Circle
               </p>
             </div>
