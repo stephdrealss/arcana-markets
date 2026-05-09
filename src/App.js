@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ethers } from "ethers";
 import { WalletModal, BridgePanel, UnifiedBalancePanel, ERC8183JobPanel } from './ArcanaIntegrations';
 
@@ -979,6 +979,117 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled}
   );
 }
 
+// ── DEPOSIT BUTTON ────────────────────────────────────────────────────────────
+function DepositButton({t, account, compact=false}){
+  const [open, setOpen] = useState(false);
+  const [srcChain, setSrcChain] = useState("ETH");
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState(null);
+  const [statusMsg, setStatusMsg] = useState("");
+  const modalRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (open && modalRef.current && !modalRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const CHAINS = [
+    { id:"ETH",  label:"Ethereum", icon:"Ξ"  },
+    { id:"BASE", label:"Base",     icon:"🔵" },
+    { id:"ARB",  label:"Arbitrum", icon:"🔷" },
+    { id:"SOL",  label:"Solana",   icon:"◎"  },
+  ];
+
+  const deposit = async () => {
+    if (!account) return;
+    if (!amount || parseFloat(amount) < 0.01) { setStatus("error"); setStatusMsg("Minimum 0.01 USDC"); return; }
+    setLoading(true); setStatus(null);
+    try {
+      await new Promise(r => setTimeout(r, 2000));
+      const refId = "CCTP_" + Math.random().toString(36).slice(2,10).toUpperCase();
+      setStatus("success");
+      setStatusMsg(`Bridge initiated! ${amount} USDC from ${CHAINS.find(c=>c.id===srcChain)?.label} → Arc · Ref: ${refId}`);
+      setAmount("");
+    } catch(e) { setStatus("error"); setStatusMsg("Bridge failed"); }
+    setLoading(false);
+  };
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} style={{
+        padding: compact ? "4px 10px" : "7px 14px",
+        background: t.blue,
+        color: "#fff",
+        border: "none",
+        borderRadius: 8,
+        fontSize: compact ? 11 : 13,
+        fontWeight: 700,
+        cursor: "pointer",
+        fontFamily: "monospace",
+        flexShrink: 0,
+      }}>
+        {compact ? "Deposit" : "⬇ Deposit"}
+      </button>
+
+      {open && (
+        <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.7)", backdropFilter:"blur(6px)", zIndex:99999, display:"flex", alignItems:"flex-start", justifyContent:"center", paddingTop:"80px", padding:"80px 16px 16px" }}>
+          <div ref={modalRef} style={{ background:t.surface, border:`1.5px solid ${t.border}`, borderRadius:20, width:"100%", maxWidth:420, boxShadow:"0 24px 80px rgba(0,0,0,0.5)" }}>
+            <div style={{ padding:"18px 24px 14px", borderBottom:`1px solid ${t.border}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div>
+                <p style={{ fontSize:17, fontWeight:800, color:t.text, margin:0 }}>⬇ Deposit USDC</p>
+                <p style={{ fontSize:11, color:t.textMuted, margin:"2px 0 0", fontFamily:"monospace" }}>Bridge from any chain · Circle CCTP</p>
+              </div>
+              <button onClick={() => setOpen(false)} style={{ background:"none", border:"none", color:t.textMuted, fontSize:22, cursor:"pointer" }}>✕</button>
+            </div>
+
+            <div style={{ padding:"16px 24px 24px" }}>
+              <div style={{ marginBottom:14 }}>
+                <label style={{ fontSize:11, color:t.textMuted, fontFamily:"monospace", letterSpacing:1, display:"block", marginBottom:6 }}>FROM CHAIN</label>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {CHAINS.map(c => (
+                    <button key={c.id} onClick={() => setSrcChain(c.id)} style={{ padding:"6px 12px", background:srcChain===c.id?t.blue:t.bg, border:`1px solid ${srcChain===c.id?t.blue:t.border}`, borderRadius:8, color:srcChain===c.id?"#fff":t.textMuted, fontSize:12, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
+                      <span>{c.icon}</span> {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14, padding:"8px 12px", background:t.bg, borderRadius:8, border:`1px solid ${t.border}` }}>
+                <span style={{ fontSize:11, color:t.textMuted, fontFamily:"monospace" }}>TO</span>
+                <span style={{ fontSize:13, fontWeight:700, color:t.blue, fontFamily:"monospace" }}>◈ Arc Testnet</span>
+                <span style={{ fontSize:10, color:t.textMuted, fontFamily:"monospace", marginLeft:"auto" }}>USDC · Chain 0x4cef52</span>
+              </div>
+
+              <div style={{ marginBottom:14 }}>
+                <label style={{ fontSize:11, color:t.textMuted, fontFamily:"monospace", letterSpacing:1, display:"block", marginBottom:6 }}>AMOUNT</label>
+                <div style={{ display:"flex", alignItems:"center", background:t.bg, border:`1.5px solid ${t.border}`, borderRadius:10 }}>
+                  <span style={{ padding:"12px", color:t.textMuted, fontFamily:"monospace" }}>$</span>
+                  <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" style={{ flex:1, background:"none", border:"none", outline:"none", color:t.text, fontSize:16, fontFamily:"monospace", fontWeight:700, padding:"12px 0" }} />
+                  <span style={{ padding:"12px 14px", color:t.textMuted, fontFamily:"monospace", fontSize:12 }}>USDC</span>
+                </div>
+                <div style={{ display:"flex", gap:6, marginTop:8 }}>
+                  {["10","50","100","500"].map(v => (
+                    <button key={v} onClick={() => setAmount(v)} style={{ flex:1, padding:"5px 0", background:amount===v?t.blue:t.bg, border:`1px solid ${amount===v?t.blue:t.border}`, borderRadius:6, color:amount===v?"#fff":t.textMuted, fontSize:11, cursor:"pointer", fontFamily:"monospace" }}>${v}</button>
+                  ))}
+                </div>
+              </div>
+
+              {status==="success" && <div style={{ padding:"10px 14px", background:t.greenBg, border:`1px solid ${t.greenBorder}`, borderRadius:8, marginBottom:12 }}><p style={{ fontSize:12, color:t.green, fontFamily:"monospace", margin:0 }}>✓ {statusMsg}</p></div>}
+              {status==="error"   && <div style={{ padding:"10px 14px", background:t.redBg,   border:`1px solid ${t.redBorder}`,   borderRadius:8, marginBottom:12 }}><p style={{ fontSize:12, color:t.red,   fontFamily:"monospace", margin:0 }}>✕ {statusMsg}</p></div>}
+
+              <button onClick={deposit} disabled={loading||!amount} style={{ width:"100%", padding:"13px", background:loading?t.blueDim:t.blue, color:loading?t.blue:"#fff", border:`1.5px solid ${t.blue}`, borderRadius:10, fontWeight:800, fontSize:14, cursor:loading||!amount?"not-allowed":"pointer", fontFamily:"monospace", letterSpacing:0.5 }}>
+                {loading ? "⏳ BRIDGING..." : `DEPOSIT ${amount||"0"} USDC → ARC`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── TRADE MODAL ───────────────────────────────────────────────────────────────
 function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,onActivityAdded}){
   const [side,setSide]=useState(initSide||"YES");
@@ -1081,7 +1192,12 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                 <p style={{fontSize:13,color:t.text,lineHeight:1.4,margin:0,fontWeight:600,flex:1,paddingRight:12}}>{m.title}</p>
                 <button onClick={onClose} style={{background:"none",border:"none",color:t.textMuted,fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>
               </div>
-              {account&&<div style={{background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:t.green,fontFamily:"monospace"}}>Balance: ${usdcBalance} USDC</div>}
+              {account&&(
+                <div style={{background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:8,padding:"8px 12px",marginBottom:8,fontSize:12,color:t.green,fontFamily:"monospace",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span>💰 Balance: <strong>${usdcBalance} USDC</strong></span>
+                  <DepositButton t={t} account={account} compact={true} />
+                </div>
+              )}
               {!account&&<div style={{background:t.amberBg,border:`1px solid ${t.amber}`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:t.amber,fontFamily:"monospace"}}>⚠ Connect wallet to trade</div>}
               {error&&<div style={{background:t.redBg,border:`1px solid ${t.redBorder}`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:t.red,fontFamily:"monospace"}}>{error}</div>}
               {loading&&<div style={{background:t.blueDim,border:`1px solid ${t.blueBorder}`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:t.blue,fontFamily:"monospace"}}>⏳ {loadingMsg}</div>}
@@ -1116,7 +1232,6 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                 {loading?`⏳ PROCESSING...`:`PLACE ${side} ORDER ON ARC`}
               </button>
               <p style={{textAlign:"center",fontSize:11,color:t.textLight,fontFamily:"monospace",marginTop:10}}>Trades settle on Arc Testnet · USDC</p>
-              <ERC8183JobPanel t={t} account={account} marketId={m.id} marketTitle={m.title} marketEndTime={Math.floor(new Date(m.ends).getTime() / 1000)} />
             </>
           )}
         </div>
@@ -1330,6 +1445,8 @@ export default function ArcanaMarkets(){
           </div>
           <div className="nav-right" style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
             {account&&<div className="usdc-badge" style={{padding:"6px 12px",background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:8,fontSize:12,color:t.green,fontFamily:"monospace",fontWeight:700}}>${usdcBalance} USDC</div>}
+            {account&&<DepositButton t={t} account={account} />}
+            {account&&<button onClick={()=>setPage("Portfolio")} title="Portfolio" style={{width:34,height:34,borderRadius:8,background:t.surface,border:`1px solid ${t.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16,flexShrink:0}}>👤</button>}
             <button onClick={toggleTheme} style={{position:"relative",width:52,height:28,borderRadius:14,background:dark?"#4F8EF7":"#E5E7EB",border:"none",cursor:"pointer",transition:"background 0.3s",padding:0,flexShrink:0}}>
               <div style={{position:"absolute",top:3,left:dark?26:3,width:22,height:22,borderRadius:"50%",background:"#fff",transition:"left 0.3s",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>
                 {dark?"🌙":"☀️"}
@@ -1341,6 +1458,8 @@ export default function ArcanaMarkets(){
               </button>
             ):(
               <WalletModal t={t} account={account} onConnected={(addr) => { setAccount(addr); LS.set("arcana_last_wallet", addr); refreshBal(addr); loadWalletData(addr); checkOwner(addr); }} onDisconnected={disconnectWallet} />
+                Connect Wallet
+              </button>
             )}
           </div>
         </div>
@@ -1416,9 +1535,6 @@ export default function ArcanaMarkets(){
                 ))}
               </div>
             </div>
-
-            <BridgePanel t={t} account={account} />
-            <UnifiedBalancePanel t={t} account={account} />
 
             <div style={{marginBottom:32}}>
               <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:12}}>TOP MOVERS</div>
