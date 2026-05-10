@@ -845,6 +845,8 @@ function Activity({t,account,newTrades=[]}){
       setLoading(false);
     };
     load();
+    const iv=setInterval(load,30000);
+    return()=>clearInterval(iv);
   },[]);
 
   const allActivity=React.useMemo(()=>{
@@ -1116,6 +1118,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                 {loading?`⏳ PROCESSING...`:`PLACE ${side} ORDER ON ARC`}
               </button>
               <p style={{textAlign:"center",fontSize:11,color:t.textLight,fontFamily:"monospace",marginTop:10}}>Trades settle on Arc Testnet · USDC</p>
+              <ERC8183JobPanel t={t} account={account} marketId={m.id} marketTitle={m.title} marketEndTime={Math.floor(new Date(m.ends).getTime() / 1000)} />
             </>
           )}
         </div>
@@ -1140,12 +1143,18 @@ export default function ArcanaMarkets(){
   const [tickIdx,setTickIdx]=useState(0);
   const [resolutions,setResolutions]=useState(()=>getResolutions());
   const [isOwner,setIsOwner]=useState(false);
-  const [stats,setStats]=useState(()=>buildStats([]));
+  const [stats,setStats]=useState({totalVolume:"$14.6K",traderCount:"297",openMarkets:`${ALL_MARKETS.length}`});
 
   const t=dark?THEMES.dark:THEMES.light;
   const toggleTheme=()=>{const n=!dark;setDark(n);LS.set("arcana_theme",n);};
 
   const refreshBal=async(addr)=>{setUsdcBalance(await getUsdcBalance(addr));};
+
+  useEffect(()=>{
+    if(!account)return;
+    const iv=setInterval(()=>refreshBal(account),15000);
+    return()=>clearInterval(iv);
+  },[account]);
 
   // Check if connected wallet is contract owner
   const checkOwner=useCallback(async(addr)=>{
@@ -1248,7 +1257,7 @@ export default function ArcanaMarkets(){
       setStats(buildStats(live,LS.get("arcana_new_trades",[])));
     };
     refresh();
-    const iv=setInterval(refresh,60000);
+    const iv=setInterval(refresh,30000);
     return()=>clearInterval(iv);
   },[]);
 
@@ -1415,6 +1424,9 @@ export default function ArcanaMarkets(){
                 ))}
               </div>
             </div>
+
+            <BridgePanel t={t} account={account} />
+            <UnifiedBalancePanel t={t} account={account} />
 
             <div style={{marginBottom:32}}>
               <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:12}}>TOP MOVERS</div>
