@@ -135,6 +135,16 @@ const USDC_ABI_FULL = [
   { name: "balanceOf", type: "function", stateMutability: "view",       inputs: [{ name: "account", type: "address" }], outputs: [{ type: "uint256" }] },
 ];
 
+// WalletConnect Logo
+function WalletConnectIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="8" fill="#3B99FC"/>
+      <path d="M9.58 12.85c3.54-3.47 9.28-3.47 12.82 0l0.43 0.42a0.44 0.44 0 010 0.63l-1.46 1.43a0.23 0.23 0 01-0.32 0l-0.59-0.58c-2.47-2.42-6.47-2.42-8.94 0l-0.63 0.62a0.23 0.23 0 01-0.32 0L9.11 13.94a0.44 0.44 0 010-0.63l0.47-0.46zm15.84 2.95l1.3 1.27a0.44 0.44 0 010 0.63l-5.85 5.73a0.46 0.46 0 01-0.64 0l-4.15-4.07a0.11 0.11 0 00-0.16 0l-4.15 4.07a0.46 0.46 0 01-0.64 0L5.28 17.7a0.44 0.44 0 010-0.63l1.3-1.27a0.46 0.46 0 01.64 0l4.15 4.07a0.11 0.11 0 00.16 0l4.15-4.07a0.46 0.46 0 01.64 0l4.15 4.07a0.11 0.11 0 00.16 0l4.15-4.07a0.46 0.46 0 01.64 0z" fill="white"/>
+    </svg>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HOOK: useCircleWallet
 // Manages Circle Programmable Wallet state (email/PIN based)
@@ -161,8 +171,10 @@ export function useCircleWallet() {
       // sdk.execute(challengeId, (err, result) => { ... });
       //
       // For demo/testnet purposes, we simulate the Circle wallet flow:
+      // Show "check email" step first
+      setCircleStep("email_sent");
+      await new Promise(r => setTimeout(r, 3000)); // Simulate email wait
       const simulatedAddr = "0xCircle" + email.replace(/\W/g, "").slice(0, 36).padEnd(36, "0");
-      await new Promise(r => setTimeout(r, 1200)); // Simulate SDK round-trip
       setCircleAddress(simulatedAddr);
       setCircleStep("connected");
     } catch (e) {
@@ -213,7 +225,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   const EVM_WALLETS = [
     { id: "metamask",    label: "MetaMask",       icon: "🦊", check: () => window.ethereum?.isMetaMask },
     { id: "coinbase",    label: "Coinbase Wallet", icon: "🔵", check: () => window.ethereum?.isCoinbaseWallet },
-    { id: "walletconnect",label: "WalletConnect",  icon: "🔗", check: () => true }, // Always show WC
+    { id: "walletconnect", label: "WalletConnect", icon: <WalletConnectIcon />, check: () => true }, // Always show WC
     { id: "injected",   label: "Browser Wallet",  icon: "🌐", check: () => !!window.ethereum },
   ];
 
@@ -375,7 +387,14 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
                   }}>RECOMMENDED</span>
                 </div>
 
-                {circleStep === "email" || circleStep === "idle" ? (
+                {circleStep === "email_sent" ? (
+                  <div style={{ textAlign: "center", padding: "8px 0" }}>
+                    <div style={{ fontSize: 24, marginBottom: 8 }}>📧</div>
+                    <p style={{ color: "#fff", fontSize: 13, fontWeight: 700, margin: "0 0 4px" }}>Check your email!</p>
+                    <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 11, fontFamily: "monospace" }}>We sent a verification link to {circleEmail}</p>
+                    <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "monospace" }}>⏳ Verifying...</div>
+                  </div>
+                ) : circleStep === "email" || circleStep === "idle" ? (
                   <div style={{ display: "flex", gap: 8 }}>
                     <input
                       type="email"
