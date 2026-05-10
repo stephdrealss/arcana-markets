@@ -1307,7 +1307,7 @@ export default function ArcanaMarkets(){
       `}</style>
 
       {/* NAV */}
-      <nav style={{position:"sticky",top:0,zIndex:100,background:t.navBg,backdropFilter:"blur(12px)",borderBottom:`1px solid ${t.border}`}}>
+      <nav style={{position:"sticky",top:0,zIndex:100,background:t.navBg,borderBottom:`1px solid ${t.border}`}}>
         <div style={{maxWidth:1380,margin:"0 auto",padding:"0 20px",display:"flex",alignItems:"center",gap:16,height:56}}>
           <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,cursor:"pointer"}} onClick={()=>setPage("Markets")}>
             <div style={{width:32,height:32,borderRadius:10,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -1340,8 +1340,6 @@ export default function ArcanaMarkets(){
               </button>
             ):(
               <WalletModal t={t} account={account} onConnected={(addr) => { setAccount(addr); LS.set("arcana_last_wallet", addr); refreshBal(addr); loadWalletData(addr); checkOwner(addr); }} onDisconnected={disconnectWallet} />
-                Connect Wallet
-              </button>
             )}
           </div>
         </div>
