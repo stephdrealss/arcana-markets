@@ -1116,7 +1116,6 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                 {loading?`⏳ PROCESSING...`:`PLACE ${side} ORDER ON ARC`}
               </button>
               <p style={{textAlign:"center",fontSize:11,color:t.textLight,fontFamily:"monospace",marginTop:10}}>Trades settle on Arc Testnet · USDC</p>
-              <ERC8183JobPanel t={t} account={account} marketId={m.id} marketTitle={m.title} marketEndTime={Math.floor(new Date(m.ends).getTime() / 1000)} />
             </>
           )}
         </div>
@@ -1416,9 +1415,6 @@ export default function ArcanaMarkets(){
                 ))}
               </div>
             </div>
-
-            <BridgePanel t={t} account={account} />
-            <UnifiedBalancePanel t={t} account={account} />
 
             <div style={{marginBottom:32}}>
               <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:12}}>TOP MOVERS</div>
