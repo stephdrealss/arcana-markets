@@ -40,10 +40,16 @@ export function useCircleWallet() {
     setCircleLoading(true);
     setCircleError("");
     try {
-      await new Promise(r => setTimeout(r, 500));
+      const res = await fetch("/api/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send code");
       setCircleStep("check_email");
     } catch (e) {
-      setCircleError("Failed to send code");
+      setCircleError(e.message || "Failed to send code. Try again.");
     }
     setCircleLoading(false);
   }, []);
@@ -52,13 +58,17 @@ export function useCircleWallet() {
     setCircleLoading(true);
     setCircleError("");
     try {
-      await new Promise(r => setTimeout(r, 1000));
-      const hash = email.split("").reduce((h, c) => Math.imul(31, h) + c.charCodeAt(0) | 0, 0);
-      const addr = "0x" + Math.abs(hash).toString(16).padStart(40, "0").slice(0, 40);
-      setCircleAddress(addr);
+      const res = await fetch("/api/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Invalid code");
+      setCircleAddress(data.walletAddress);
       setCircleStep("connected");
     } catch (e) {
-      setCircleError("Invalid code. Please try again.");
+      setCircleError(e.message || "Invalid code. Please try again.");
     }
     setCircleLoading(false);
   }, []);
@@ -95,8 +105,11 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   }, [open]);
 
   useEffect(() => {
-    if (circleAddress && circleStep === "connected") { onConnected(circleAddress); setOpen(false); }
-  }, [circleAddress, circleStep]);
+    if (circleAddress && circleStep === "connected") {
+      onConnected(circleAddress);
+      setOpen(false);
+    }
+  }, [circleAddress]);
 
   const EVM_WALLETS = [
     { id:"metamask", label:"MetaMask", icon:<span style={{fontSize:22}}>🦊</span> },
