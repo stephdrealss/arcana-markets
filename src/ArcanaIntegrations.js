@@ -26,8 +26,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
-const CIRCLE_APP_ID = "YOUR_CIRCLE_APP_ID";
-const ARCANA_API = "https://arcana-api-z1u9.onrender.com";
+const CIRCLE_APP_ID = "YOUR_CIRCLE_APP_ID"; // Get from console.circle.com
 const ARC_CHAIN_ID  = "0x4cef52";
 const ARC_RPC       = "https://rpc.testnet.arc.network";
 const USDC_ADDRESS  = "0x3600000000000000000000000000000000000000";
@@ -145,8 +144,7 @@ export function useCircleWallet() {
   const [circleLoading, setCircleLoading]   = useState(false);
   const [circleEmail, setCircleEmail]       = useState("");
   const [circleError, setCircleError]       = useState("");
-  const [circleStep, setCircleStep]         = useState("idle");
-  const [circleOtp, setCircleOtp]           = useState("");
+  const [circleStep, setCircleStep]         = useState("idle"); // idle | email | pin | connected
 
   // Initialize Circle Web3 Services SDK
   // In production: import { W3SSdk } from "@circle-fin/w3s-pw-web-sdk"
@@ -182,8 +180,7 @@ export function useCircleWallet() {
 
   return {
     circleAddress, circleLoading, circleEmail, setCircleEmail,
-    circleError, circleStep, setCircleStep, circleOtp, setCircleOtp,
-    initCircleSDK, verifyOTP, disconnectCircle,
+    circleError, circleStep, setCircleStep, initCircleSDK, disconnectCircle,
   };
 }
 
@@ -200,8 +197,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
 
   const {
     circleAddress, circleLoading, circleEmail, setCircleEmail,
-    circleError, circleStep, setCircleStep, circleOtp, setCircleOtp,
-    initCircleSDK, verifyOTP, disconnectCircle,
+    circleError, circleStep, setCircleStep, initCircleSDK, disconnectCircle,
   } = useCircleWallet();
 
   // Close modal on outside click
@@ -379,47 +375,48 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
                   }}>RECOMMENDED</span>
                 </div>
 
-                {(circleStep === "idle" || circleStep === "email") && (
-                  <div style={{ display:"flex", gap:8 }}>
-                    <input type="email" placeholder="your@email.com" value={circleEmail}
+                {circleStep === "email" || circleStep === "idle" ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="email"
+                      placeholder="your@email.com"
+                      value={circleEmail}
                       onChange={e => setCircleEmail(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && handleCircleConnect()}
-                      style={{ flex:1, background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, outline:"none" }}
+                      style={{
+                        flex: 1,
+                        background: "rgba(255,255,255,0.1)",
+                        border: "1px solid rgba(255,255,255,0.2)",
+                        borderRadius: 8,
+                        padding: "9px 12px",
+                        color: "#fff",
+                        fontSize: 13,
+                        outline: "none",
+                      }}
                     />
-                    <button onClick={handleCircleConnect} disabled={circleLoading}
-                      style={{ padding:"9px 16px", background:"#fff", color:"#1d4ed8", border:"none", borderRadius:8, fontWeight:800, fontSize:13, cursor:circleLoading?"not-allowed":"pointer", whiteSpace:"nowrap" }}>
+                    <button
+                      onClick={handleCircleConnect}
+                      disabled={circleLoading}
+                      style={{
+                        padding: "9px 16px",
+                        background: "#fff",
+                        color: "#1d4ed8",
+                        border: "none",
+                        borderRadius: 8,
+                        fontWeight: 800,
+                        fontSize: 13,
+                        cursor: circleLoading ? "not-allowed" : "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       {circleLoading ? "⏳" : "Continue →"}
                     </button>
                   </div>
-                )}
-                {circleStep === "check_email" && (
-                  <div>
-                    <p style={{ color:"#fff", fontSize:12, margin:"0 0 8px", fontFamily:"monospace" }}>
-                      📧 Enter the 6-digit code sent to <strong>{circleEmail}</strong>
-                    </p>
-                    <div style={{ display:"flex", gap:8 }}>
-                      <input type="text" placeholder="000000" maxLength={6} value={circleOtp}
-                        onChange={e => setCircleOtp(e.target.value.replace(/[^0-9]/g, ""))}
-                        style={{ flex:1, background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:20, fontFamily:"monospace", letterSpacing:6, outline:"none", textAlign:"center" }}
-                      />
-                      <button onClick={() => verifyOTP(circleEmail, circleOtp)}
-                        disabled={circleLoading || circleOtp.length < 6}
-                        style={{ padding:"9px 14px", background:"#fff", color:"#1d4ed8", border:"none", borderRadius:8, fontWeight:800, fontSize:13, cursor:"pointer", opacity:circleOtp.length<6?0.6:1 }}>
-                        {circleLoading ? "⏳" : "Verify →"}
-                      </button>
-                    </div>
-                    <button onClick={() => { setCircleStep("idle"); setCircleOtp(""); }}
-                      style={{ background:"none", border:"none", color:"rgba(255,255,255,0.5)", fontSize:11, cursor:"pointer", marginTop:6 }}>
-                      ← Use different email
-                    </button>
+                ) : circleStep === "connected" ? (
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "monospace" }}>
+                    ✓ Connected · {circleAddress?.slice(0, 10)}...
                   </div>
-                )}
-                {circleStep === "connected" && (
-                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.8)", fontFamily:"monospace" }}>
-                    ✓ Connected · {circleAddress?.slice(0,10)}...
-                  </div>
-                )}
-
+                ) : null}
 
                 {circleError && (
                   <p style={{ color: "#fca5a5", fontSize: 11, fontFamily: "monospace", margin: "8px 0 0" }}>✕ {circleError}</p>
