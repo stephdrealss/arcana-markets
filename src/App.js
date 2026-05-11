@@ -798,7 +798,11 @@ function Leaderboard({t,account,newTrades=[]}){
     setLoading(false);
   },[last]);
 
-  useEffect(()=>{load();},[]);
+  useEffect(()=>{
+    load();
+    const iv=setInterval(()=>load(true),30000);
+    return()=>clearInterval(iv);
+  },[]);
 
   const rows=React.useMemo(()=>buildLeaderboard(newTrades||[]),[newTrades]);
 
@@ -814,7 +818,7 @@ function Leaderboard({t,account,newTrades=[]}){
       <p style={{fontSize:13,color:t.textMuted,marginBottom:24}}>
         Top traders by real on-chain activity · {rows.length} traders · {CHAIN_STATS.totalTrades} total trades
       </p>
-      <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,overflow:"hidden"}}>
+      <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,overflow:"hidden",maxHeight:600,overflowY:"auto"}}>
         {rows.map(row=>(
           <div key={row.rank} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 20px",borderBottom:row.rank<rows.length?`1px solid ${t.border}`:"none",background:account&&row.fullAddr?.toLowerCase()===account?.toLowerCase()?t.blueDim:"transparent"}}>
             <span style={{fontSize:14,width:24,textAlign:"center"}}>{row.badge||`#${row.rank}`}</span>
@@ -845,7 +849,7 @@ function Activity({t,account,newTrades=[]}){
       setLoading(false);
     };
     load();
-    const iv=setInterval(load,30000);
+    const iv=setInterval(load,10000);
     return()=>clearInterval(iv);
   },[]);
 
@@ -978,6 +982,83 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled}
         )}
       </div>
     </div>
+  );
+}
+
+
+
+// ── BRIDGE BUTTON ─────────────────────────────────────────────────────────────
+function BridgeButton({t, account}){
+  const [open, setOpen] = React.useState(false);
+  if (!account) return null;
+  return (
+    <>
+      <button onClick={() => setOpen(true)} style={{
+        padding:"7px 14px", background:t.surface, border:`1px solid ${t.border}`,
+        borderRadius:8, cursor:"pointer", fontSize:12, fontWeight:700, color:t.text,
+        display:"flex", alignItems:"center", gap:5,
+      }}>
+        <span>⇄</span> Bridge
+      </button>
+      {open && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2147483647,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:20,width:"100%",maxWidth:480,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 32px 100px rgba(0,0,0,0.8)"}}>
+            <div style={{padding:"18px 24px 14px",borderBottom:`1px solid ${t.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:t.surface,zIndex:1}}>
+              <div>
+                <p style={{fontSize:17,fontWeight:800,color:t.text,margin:0}}>⇄ Bridge USDC to Arc</p>
+                <p style={{fontSize:11,color:t.textMuted,margin:"2px 0 0",fontFamily:"monospace"}}>Move USDC from any chain to Arc Testnet · Circle CCTP</p>
+              </div>
+              <button onClick={() => setOpen(false)} style={{background:"none",border:"none",color:t.textMuted,fontSize:22,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{padding:"16px 24px 24px"}}>
+              <BridgePanel t={t} account={account} />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── DEPOSIT BUTTON ────────────────────────────────────────────────────────────
+function DepositButton({t, account, usdcBalance}){
+  const [open, setOpen] = React.useState(false);
+
+  if (!account) return null;
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} style={{
+        display:"flex", flexDirection:"column", alignItems:"center",
+        padding:"5px 14px", background:t.blueDim, border:`1px solid ${t.blueBorder}`,
+        borderRadius:8, cursor:"pointer", lineHeight:1.2,
+      }}>
+        <span style={{fontSize:11, fontWeight:700, color:t.blue}}>⬇ Deposit</span>
+        <span style={{fontSize:12, fontWeight:800, color:t.green, fontFamily:"monospace"}}>${usdcBalance} USDC</span>
+      </button>
+
+      {open && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2147483647,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:20,width:"100%",maxWidth:480,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 32px 100px rgba(0,0,0,0.8)"}}>
+            <div style={{padding:"18px 24px 14px",borderBottom:`1px solid ${t.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:t.surface,zIndex:1}}>
+              <div>
+                <p style={{fontSize:17,fontWeight:800,color:t.text,margin:0}}>⬇ Deposit USDC</p>
+                <p style={{fontSize:11,color:t.textMuted,margin:"2px 0 0",fontFamily:"monospace"}}>Bridge from any chain · Circle CCTP · Arc Testnet</p>
+              </div>
+              <button onClick={() => setOpen(false)} style={{background:"none",border:"none",color:t.textMuted,fontSize:22,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{padding:"16px 24px 24px"}}>
+              <div style={{background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:10,padding:"12px 16px",marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:13,color:t.green,fontFamily:"monospace",fontWeight:700}}>Current Balance</span>
+                <span style={{fontSize:20,fontWeight:800,color:t.green,fontFamily:"monospace"}}>${usdcBalance} USDC</span>
+              </div>
+              <BridgePanel t={t} account={account} inline={true} />
+              <UnifiedBalancePanel t={t} account={account} />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1257,7 +1338,7 @@ export default function ArcanaMarkets(){
       setStats(buildStats(live,LS.get("arcana_new_trades",[])));
     };
     refresh();
-    const iv=setInterval(refresh,30000);
+    const iv=setInterval(refresh,20000);
     return()=>clearInterval(iv);
   },[]);
 
@@ -1337,7 +1418,8 @@ export default function ArcanaMarkets(){
             ))}
           </div>
           <div className="nav-right" style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-            {account&&<div className="usdc-badge" style={{padding:"6px 12px",background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:8,fontSize:12,color:t.green,fontFamily:"monospace",fontWeight:700}}>${usdcBalance} USDC</div>}
+            {account&&<BridgeButton t={t} account={account} />}
+            {account&&<DepositButton t={t} account={account} usdcBalance={usdcBalance} />}
             <button onClick={toggleTheme} style={{position:"relative",width:52,height:28,borderRadius:14,background:dark?"#4F8EF7":"#E5E7EB",border:"none",cursor:"pointer",transition:"background 0.3s",padding:0,flexShrink:0}}>
               <div style={{position:"absolute",top:3,left:dark?26:3,width:22,height:22,borderRadius:"50%",background:"#fff",transition:"left 0.3s",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>
                 {dark?"🌙":"☀️"}
@@ -1424,9 +1506,6 @@ export default function ArcanaMarkets(){
                 ))}
               </div>
             </div>
-
-            <BridgePanel t={t} account={account} />
-            <UnifiedBalancePanel t={t} account={account} />
 
             <div style={{marginBottom:32}}>
               <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:12}}>TOP MOVERS</div>
