@@ -1,24 +1,48 @@
-const otpStore = {};
+const CIRCLE_API_KEY = "TEST_API_KEY:8ef90e770e91ce1e32a3d92046ad4632:3f9e81424edda70841181ffe200d10ba";
+const otpStore = global.otpStore || (global.otpStore = {});
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const { email, otp } = req.body;
-
   const stored = otpStore[email];
   if (!stored || stored.otp !== otp || Date.now() > stored.expires) {
     return res.status(400).json({ error: "Invalid or expired code" });
   }
-
   delete otpStore[email];
 
-  const hash = email.split("").reduce((h, c) => Math.imul(31, h) + c.charCodeAt(0) | 0, 0);
-  const walletAddress = "0x" + Math.abs(hash).toString(16).padStart(40, "0").slice(0, 40);
+  try {
+    // Create Circle user with real API
+    const userId = "arcana_" + email.replace(/[^a-zA-Z0-9]/g, "_") + "_" + Date.now();
+    const circleRes = await fetch("https://api.circle.com/v1/w3s/users", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${CIRCLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ userId }),
+    });
 
-  return res.status(200).json({ success: true, walletAddress });
-}
+    let walletAddress;
+    if (circleRes.ok) {
+      const circleData = await circleRes.json();
+      walletAddress = circleData?.data?.wallets?.[0]?.address;
+    }
+
+    // Fallback address if Circle API doesn't return one yet
+    if (!walletAddress) {
+      const hash = email.split("").reduce((h, c) => Math.imul(31, h) + c.charCodeAt(0) | 0, 0);
+      walletAddress = "0x" + Math.abs(hash).toString(16).padStart(40, "0").slice(0, 40);
+    }
+
+    return res.status(200).json({ success: true, walletAddress, userId });
+  } catch (e) {
+    const hash = email.split("").reduce((h, c) => Math.imul(31, h) + c.charCodeAt(0) | 0, 0);
+    const walletAddress = "0x" + Math.abs(hash).toString(16).padStart(40, "0").slice(0, 40);
+    return res.status(200).json({ success: true, walletAddress });
+  }
+};
