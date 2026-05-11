@@ -178,49 +178,58 @@ const MARKET_ID_MAP={1:"Market #1",2:"BTC hits $120K before July 2026?",3:"ETH f
 
 async function fetchLiveTrades() {
   const seedHashes = new Set(ACTIVITY_SEED.map(t => t.txHash));
+  const allItems = [];
   try {
-    const url = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/logs?topic0=${SHARES_BOUGHT_SIG}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Logs API error");
-    const data = await res.json();
-    const items = data.items || [];
-    return items
-      .filter(item => !seedHashes.has(item.transaction_hash))
-      .map(item => {
-        const marketId = item.topics?.[1] ? parseInt(item.topics[1], 16) : 0;
-        const dataHex = (item.data || "").replace("0x","");
-        const isYes = dataHex.length >= 64 ? parseInt(dataHex.slice(0,64),16) === 1 : true;
-        const usdc = dataHex.length >= 128 ? Math.round(parseInt(dataHex.slice(64,128),16)/1e4)/100 : 0;
-        const buyer = item.topics?.[2] ? "0x"+item.topics[2].slice(-40) : "";
-        return {
-          from: buyer,
-          shortAddr: `${buyer.slice(0,6)}...${buyer.slice(-4)}`,
-          txHash: item.transaction_hash,
-          time: (item.timestamp||"").slice(0,16),
-          market: MARKET_ID_MAP[marketId] || `Market #${marketId}`,
-          side: isYes ? "YES" : "NO",
-          usdc,
-        };
-      });
-  } catch(e) {
-    try {
-      const url2 = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&filter=to`;
-      const res2 = await fetch(url2);
-      if (!res2.ok) throw new Error();
-      const data2 = await res2.json();
-      return (data2.items||[])
-        .filter(item => !seedHashes.has(item.tx_hash))
-        .map(item => ({
-          from: item.from?.hash||"",
-          shortAddr: `${(item.from?.hash||"").slice(0,6)}...${(item.from?.hash||"").slice(-4)}`,
-          txHash: item.tx_hash,
-          time: (item.timestamp||"").slice(0,16),
-          market: "Trade on Arcana Markets",
-          side: "",
-          usdc: Math.round(Number(item.total?.value||0)/1e4)/100,
-        }));
-    } catch(e2) { return []; }
-  }
+    // Fetch ALL pages
+    let url = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/logs?topic0=${SHARES_BOUGHT_SIG}`;
+    let pages = 0;
+    while (url && pages < 10) {
+      const res = await fetch(url);
+      if (!res.ok) break;
+      const data = await res.json();
+      const items = data.items || [];
+      allItems.push(...items);
+      url = data.next_page_params ? `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/logs?topic0=${SHARES_BOUGHT_SIG}&${new URLSearchParams(data.next_page_params)}` : null;
+      pages++;
+    }
+    if (allItems.length > 0) {
+      return allItems
+        .filter(item => !seedHashes.has(item.transaction_hash))
+        .map(item => {
+          const marketId = item.topics?.[1] ? parseInt(item.topics[1], 16) : 0;
+          const dataHex = (item.data || "").replace("0x","");
+          const isYes = dataHex.length >= 64 ? parseInt(dataHex.slice(0,64),16) === 1 : true;
+          const usdc = dataHex.length >= 128 ? Math.round(parseInt(dataHex.slice(64,128),16)/1e4)/100 : 0;
+          const buyer = item.topics?.[2] ? "0x"+item.topics[2].slice(-40) : "";
+          return {
+            from: buyer,
+            shortAddr: `${buyer.slice(0,6)}...${buyer.slice(-4)}`,
+            txHash: item.transaction_hash,
+            time: (item.timestamp||"").slice(0,16),
+            market: MARKET_ID_MAP[marketId] || `Market #${marketId}`,
+            side: isYes ? "YES" : "NO",
+            usdc,
+          };
+        });
+    }
+  } catch(e) {}
+  try {
+    const url2 = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&filter=to`;
+    const res2 = await fetch(url2);
+    if (!res2.ok) throw new Error();
+    const data2 = await res2.json();
+    return (data2.items||[])
+      .filter(item => !seedHashes.has(item.tx_hash))
+      .map(item => ({
+        from: item.from?.hash||"",
+        shortAddr: `${(item.from?.hash||"").slice(0,6)}...${(item.from?.hash||"").slice(-4)}`,
+        txHash: item.tx_hash,
+        time: (item.timestamp||"").slice(0,16),
+        market: "Trade on Arcana Markets",
+        side: "",
+        usdc: Math.round(Number(item.total?.value||0)/1e4)/100,
+      }));
+  } catch(e2) { return []; }
 }
 
 async function fetchWalletLiveHistory(walletAddr) {
@@ -278,26 +287,38 @@ function buildStats(liveStats=null, newTrades=[]) {
 
 async function fetchLiveStats() {
   try {
-    const [txRes, transferRes] = await Promise.all([
-      fetch(`https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/transactions?filter=to`),
-      fetch(`https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&filter=to`),
-    ]);
-    let uniqueTraders = CHAIN_STATS.uniqueTraders;
-    let totalTrades = CHAIN_STATS.totalTrades;
-    let totalVolume = CHAIN_STATS.totalVolume;
-    if (txRes.ok) {
-      const txData = await txRes.json();
-      const txs = (txData.items||[]).filter(tx=>tx.status==="ok");
-      const addrs = new Set(txs.map(tx=>tx.from?.hash?.toLowerCase()).filter(Boolean));
-      if (addrs.size > 0) uniqueTraders = Math.max(CHAIN_STATS.uniqueTraders, addrs.size);
-      if (txs.length > 0) totalTrades = Math.max(CHAIN_STATS.totalTrades, txs.length);
+    const allAddrs = new Set();
+    let allTrades = 0;
+    let totalVolume = 0;
+    // Fetch all tx pages
+    let txUrl = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/transactions?filter=to`;
+    let pages = 0;
+    while (txUrl && pages < 20) {
+      const res = await fetch(txUrl);
+      if (!res.ok) break;
+      const data = await res.json();
+      const txs = (data.items||[]).filter(tx=>tx.status==="ok");
+      txs.forEach(tx => { if(tx.from?.hash) allAddrs.add(tx.from.hash.toLowerCase()); });
+      allTrades += txs.length;
+      txUrl = data.next_page_params ? `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/transactions?filter=to&${new URLSearchParams(data.next_page_params)}` : null;
+      pages++;
     }
-    if (transferRes.ok) {
-      const transferData = await transferRes.json();
-      const vol = (transferData.items||[]).reduce((s,tx)=>s+(Number(tx.total?.value||0)/1e6),0);
-      if (vol > 0) totalVolume = Math.max(CHAIN_STATS.totalVolume, vol);
+    // Fetch all transfer pages for volume
+    let volUrl = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&filter=to`;
+    pages = 0;
+    while (volUrl && pages < 20) {
+      const res = await fetch(volUrl);
+      if (!res.ok) break;
+      const data = await res.json();
+      totalVolume += (data.items||[]).reduce((s,tx)=>s+(Number(tx.total?.value||0)/1e6),0);
+      volUrl = data.next_page_params ? `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&filter=to&${new URLSearchParams(data.next_page_params)}` : null;
+      pages++;
     }
-    return {totalTrades, uniqueTraders, totalVolume};
+    return {
+      totalTrades: Math.max(CHAIN_STATS.totalTrades, allTrades),
+      uniqueTraders: Math.max(CHAIN_STATS.uniqueTraders, allAddrs.size),
+      totalVolume: Math.max(CHAIN_STATS.totalVolume, totalVolume),
+    };
   } catch { return CHAIN_STATS; }
 }
 
@@ -798,11 +819,7 @@ function Leaderboard({t,account,newTrades=[]}){
     setLoading(false);
   },[last]);
 
-  useEffect(()=>{
-    load();
-    const iv=setInterval(()=>load(true),30000);
-    return()=>clearInterval(iv);
-  },[]);
+  useEffect(()=>{load();},[]);
 
   const rows=React.useMemo(()=>buildLeaderboard(newTrades||[]),[newTrades]);
 
@@ -818,7 +835,7 @@ function Leaderboard({t,account,newTrades=[]}){
       <p style={{fontSize:13,color:t.textMuted,marginBottom:24}}>
         Top traders by real on-chain activity · {rows.length} traders · {CHAIN_STATS.totalTrades} total trades
       </p>
-      <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,overflow:"hidden",maxHeight:600,overflowY:"auto"}}>
+      <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,overflow:"hidden"}}>
         {rows.map(row=>(
           <div key={row.rank} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 20px",borderBottom:row.rank<rows.length?`1px solid ${t.border}`:"none",background:account&&row.fullAddr?.toLowerCase()===account?.toLowerCase()?t.blueDim:"transparent"}}>
             <span style={{fontSize:14,width:24,textAlign:"center"}}>{row.badge||`#${row.rank}`}</span>
@@ -849,8 +866,6 @@ function Activity({t,account,newTrades=[]}){
       setLoading(false);
     };
     load();
-    const iv=setInterval(load,10000);
-    return()=>clearInterval(iv);
   },[]);
 
   const allActivity=React.useMemo(()=>{
@@ -982,83 +997,6 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled}
         )}
       </div>
     </div>
-  );
-}
-
-
-
-// ── BRIDGE BUTTON ─────────────────────────────────────────────────────────────
-function BridgeButton({t, account}){
-  const [open, setOpen] = React.useState(false);
-  if (!account) return null;
-  return (
-    <>
-      <button onClick={() => setOpen(true)} style={{
-        padding:"7px 14px", background:t.surface, border:`1px solid ${t.border}`,
-        borderRadius:8, cursor:"pointer", fontSize:12, fontWeight:700, color:t.text,
-        display:"flex", alignItems:"center", gap:5,
-      }}>
-        <span>⇄</span> Bridge
-      </button>
-      {open && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2147483647,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:20,width:"100%",maxWidth:480,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 32px 100px rgba(0,0,0,0.8)"}}>
-            <div style={{padding:"18px 24px 14px",borderBottom:`1px solid ${t.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:t.surface,zIndex:1}}>
-              <div>
-                <p style={{fontSize:17,fontWeight:800,color:t.text,margin:0}}>⇄ Bridge USDC to Arc</p>
-                <p style={{fontSize:11,color:t.textMuted,margin:"2px 0 0",fontFamily:"monospace"}}>Move USDC from any chain to Arc Testnet · Circle CCTP</p>
-              </div>
-              <button onClick={() => setOpen(false)} style={{background:"none",border:"none",color:t.textMuted,fontSize:22,cursor:"pointer"}}>✕</button>
-            </div>
-            <div style={{padding:"16px 24px 24px"}}>
-              <BridgePanel t={t} account={account} />
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-// ── DEPOSIT BUTTON ────────────────────────────────────────────────────────────
-function DepositButton({t, account, usdcBalance}){
-  const [open, setOpen] = React.useState(false);
-
-  if (!account) return null;
-
-  return (
-    <>
-      <button onClick={() => setOpen(true)} style={{
-        display:"flex", flexDirection:"column", alignItems:"center",
-        padding:"5px 14px", background:t.blueDim, border:`1px solid ${t.blueBorder}`,
-        borderRadius:8, cursor:"pointer", lineHeight:1.2,
-      }}>
-        <span style={{fontSize:11, fontWeight:700, color:t.blue}}>⬇ Deposit</span>
-        <span style={{fontSize:12, fontWeight:800, color:t.green, fontFamily:"monospace"}}>${usdcBalance} USDC</span>
-      </button>
-
-      {open && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2147483647,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:20,width:"100%",maxWidth:480,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 32px 100px rgba(0,0,0,0.8)"}}>
-            <div style={{padding:"18px 24px 14px",borderBottom:`1px solid ${t.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:t.surface,zIndex:1}}>
-              <div>
-                <p style={{fontSize:17,fontWeight:800,color:t.text,margin:0}}>⬇ Deposit USDC</p>
-                <p style={{fontSize:11,color:t.textMuted,margin:"2px 0 0",fontFamily:"monospace"}}>Bridge from any chain · Circle CCTP · Arc Testnet</p>
-              </div>
-              <button onClick={() => setOpen(false)} style={{background:"none",border:"none",color:t.textMuted,fontSize:22,cursor:"pointer"}}>✕</button>
-            </div>
-            <div style={{padding:"16px 24px 24px"}}>
-              <div style={{background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:10,padding:"12px 16px",marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:13,color:t.green,fontFamily:"monospace",fontWeight:700}}>Current Balance</span>
-                <span style={{fontSize:20,fontWeight:800,color:t.green,fontFamily:"monospace"}}>${usdcBalance} USDC</span>
-              </div>
-              <BridgePanel t={t} account={account} inline={true} />
-              <UnifiedBalancePanel t={t} account={account} />
-            </div>
-          </div>
-        </div>
-      )}
-    </>
   );
 }
 
@@ -1199,7 +1137,6 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                 {loading?`⏳ PROCESSING...`:`PLACE ${side} ORDER ON ARC`}
               </button>
               <p style={{textAlign:"center",fontSize:11,color:t.textLight,fontFamily:"monospace",marginTop:10}}>Trades settle on Arc Testnet · USDC</p>
-              <ERC8183JobPanel t={t} account={account} marketId={m.id} marketTitle={m.title} marketEndTime={Math.floor(new Date(m.ends).getTime() / 1000)} />
             </>
           )}
         </div>
@@ -1224,18 +1161,12 @@ export default function ArcanaMarkets(){
   const [tickIdx,setTickIdx]=useState(0);
   const [resolutions,setResolutions]=useState(()=>getResolutions());
   const [isOwner,setIsOwner]=useState(false);
-  const [stats,setStats]=useState({totalVolume:"$14.6K",traderCount:"297",openMarkets:`${ALL_MARKETS.length}`});
+  const [stats,setStats]=useState(()=>buildStats([]));
 
   const t=dark?THEMES.dark:THEMES.light;
   const toggleTheme=()=>{const n=!dark;setDark(n);LS.set("arcana_theme",n);};
 
   const refreshBal=async(addr)=>{setUsdcBalance(await getUsdcBalance(addr));};
-
-  useEffect(()=>{
-    if(!account)return;
-    const iv=setInterval(()=>refreshBal(account),15000);
-    return()=>clearInterval(iv);
-  },[account]);
 
   // Check if connected wallet is contract owner
   const checkOwner=useCallback(async(addr)=>{
@@ -1338,7 +1269,7 @@ export default function ArcanaMarkets(){
       setStats(buildStats(live,LS.get("arcana_new_trades",[])));
     };
     refresh();
-    const iv=setInterval(refresh,20000);
+    const iv=setInterval(refresh,60000);
     return()=>clearInterval(iv);
   },[]);
 
@@ -1418,8 +1349,7 @@ export default function ArcanaMarkets(){
             ))}
           </div>
           <div className="nav-right" style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-            {account&&<BridgeButton t={t} account={account} />}
-            {account&&<DepositButton t={t} account={account} usdcBalance={usdcBalance} />}
+            {account&&<div className="usdc-badge" style={{padding:"6px 12px",background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:8,fontSize:12,color:t.green,fontFamily:"monospace",fontWeight:700}}>${usdcBalance} USDC</div>}
             <button onClick={toggleTheme} style={{position:"relative",width:52,height:28,borderRadius:14,background:dark?"#4F8EF7":"#E5E7EB",border:"none",cursor:"pointer",transition:"background 0.3s",padding:0,flexShrink:0}}>
               <div style={{position:"absolute",top:3,left:dark?26:3,width:22,height:22,borderRadius:"50%",background:"#fff",transition:"left 0.3s",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>
                 {dark?"🌙":"☀️"}
@@ -1431,6 +1361,8 @@ export default function ArcanaMarkets(){
               </button>
             ):(
               <WalletModal t={t} account={account} onConnected={(addr) => { setAccount(addr); LS.set("arcana_last_wallet", addr); refreshBal(addr); loadWalletData(addr); checkOwner(addr); }} onDisconnected={disconnectWallet} />
+                Connect Wallet
+              </button>
             )}
           </div>
         </div>
