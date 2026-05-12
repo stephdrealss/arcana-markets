@@ -91,11 +91,13 @@ export function useCircleWallet() {
 }
 
 export function WalletModal({ t, account, onConnected, onDisconnected }) {
-  const [open, setOpen]             = useState(false);
-  const [evmLoading, setEvmLoading] = useState(null);
-  const [evmError, setEvmError]     = useState("");
-  const modalRef                    = useRef(null);
-  const dropdownRef                 = useRef(null);
+  const [open, setOpen]               = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [evmLoading, setEvmLoading]   = useState(null);
+  const [evmError, setEvmError]       = useState("");
+  const [copied, setCopied]           = useState(false);
+  const modalRef                      = useRef(null);
+  const dropdownRef                   = useRef(null);
 
   const {
     circleAddress, circleLoading, circleEmail, setCircleEmail,
@@ -103,16 +105,25 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
     circleError, circleStep, sendOtp, verifyOtp, disconnectCircle,
   } = useCircleWallet();
 
-  const [copied, setCopied] = useState(false);
-
+  // Close connect modal on outside click
   useEffect(() => {
     const handler = (e) => {
       if (open && modalRef.current && !modalRef.current.contains(e.target)) setOpen(false);
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownOpen && dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [dropdownOpen]);
 
   const EVM_WALLETS = [
     { id: "metamask",     label: "MetaMask",       icon: "🦊" },
@@ -150,7 +161,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   const handleDisconnect = () => {
     if (circleAddress) disconnectCircle();
     if (onDisconnected) onDisconnected();
-    setOpen(false);
+    setDropdownOpen(false);
   };
 
   const handleCopy = () => {
@@ -159,12 +170,11 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // ── CONNECTED STATE — dropdown with copy + disconnect ──
   if (account) {
     return (
       <div style={{ position:"relative" }} ref={dropdownRef}>
         <button
-          onClick={() => setOpen(o => !o)}
+          onClick={() => setDropdownOpen(o => !o)}
           style={{ padding:"7px 16px", background:t.blue, color:"#fff", border:"none", borderRadius:8, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"monospace", display:"flex", alignItems:"center", gap:6 }}
         >
           <span style={{ opacity:0.7 }}>◈</span>
@@ -172,7 +182,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
           <span style={{ opacity:0.5, marginLeft:2 }}>▾</span>
         </button>
 
-        {open && (
+        {dropdownOpen && (
           <div style={{ position:"absolute", right:0, top:"calc(100% + 6px)", background:t.surface, border:`1.5px solid ${t.border}`, borderRadius:12, padding:8, minWidth:240, zIndex:400, boxShadow:"0 8px 32px rgba(0,0,0,0.4)" }}>
             <div style={{ padding:"8px 10px 10px", borderBottom:`1px solid ${t.border}`, marginBottom:6 }}>
               <p style={{ fontSize:10, color:t.textMuted, fontFamily:"monospace", margin:"0 0 4px", letterSpacing:1 }}>WALLET ADDRESS</p>
@@ -186,7 +196,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
             </button>
             <button
               onClick={handleDisconnect}
-              style={{ width:"100%", padding:"9px 10px", background:t.redBg || "rgba(239,68,68,0.1)", border:`1px solid ${t.redBorder || "rgba(239,68,68,0.3)"}`, borderRadius:8, color:t.red || "#ef4444", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"monospace", textAlign:"left" }}
+              style={{ width:"100%", padding:"9px 10px", background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:8, color:"#ef4444", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"monospace", textAlign:"left" }}
             >
               Disconnect
             </button>
@@ -205,7 +215,6 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
       {open && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", backdropFilter:"blur(6px)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
           <div ref={modalRef} style={{ background:t.surface, border:`1.5px solid ${t.border}`, borderRadius:20, width:"100%", maxWidth:420, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.4)" }}>
-
             <div style={{ padding:"20px 24px 16px", borderBottom:`1px solid ${t.border}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
                 <p style={{ fontSize:17, fontWeight:800, color:t.text, margin:0 }}>Connect to Arcana</p>
@@ -299,13 +308,13 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
 }
 
 export function BridgePanel({ t, account }) {
-  const [open, setOpen]         = useState(false);
-  const [srcChain, setSrcChain] = useState("Ethereum_Sepolia");
-  const [amount, setAmount]     = useState("");
-  const [loading, setLoading]   = useState(false);
-  const [status, setStatus]     = useState(null);
+  const [open, setOpen]           = useState(false);
+  const [srcChain, setSrcChain]   = useState("Ethereum_Sepolia");
+  const [amount, setAmount]       = useState("");
+  const [loading, setLoading]     = useState(false);
+  const [status, setStatus]       = useState(null);
   const [statusMsg, setStatusMsg] = useState("");
-  const [txHash, setTxHash]     = useState("");
+  const [txHash, setTxHash]       = useState("");
 
   const SUPPORTED_CHAINS = [
     {id:"Ethereum_Sepolia",label:"Ethereum",icon:<svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><path d="M16 6.4v7.2L21.6 16 16 6.4z" fill="white" fillOpacity="0.6"/><path d="M16 6.4L10.4 16 16 13.6V6.4z" fill="white"/><path d="M16 20.8v4.8L21.6 17.6 16 20.8z" fill="white" fillOpacity="0.6"/><path d="M16 25.6v-4.8L10.4 17.6 16 25.6z" fill="white"/></svg>},
