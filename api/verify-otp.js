@@ -50,7 +50,6 @@ module.exports = async function handler(req, res) {
 
   try {
     const userId = "arcana_" + email.replace(/[^a-zA-Z0-9]/g, "_");
-    const entitySecretCipherText = await getEntitySecretCipherText();
 
     // Create Circle user (ignored if already exists)
     await fetch("https://api.circle.com/v1/w3s/users", {
@@ -69,13 +68,14 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ success: true, walletAddress: existingWallet, userId });
     }
 
-    // Create wallet set
+    // Create wallet set — fresh ciphertext required each time
+    const cipherText1 = await getEntitySecretCipherText();
     const wsRes = await fetch("https://api.circle.com/v1/w3s/developer/walletSets", {
       method: "POST",
       headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         idempotencyKey: crypto.randomUUID(),
-        entitySecretCipherText,
+        entitySecretCipherText: cipherText1,
         name: "Arcana Markets"
       })
     });
@@ -83,15 +83,16 @@ module.exports = async function handler(req, res) {
     const walletSetId = wsData?.data?.walletSet?.id;
     if (!walletSetId) throw new Error("Failed to create wallet set: " + JSON.stringify(wsData));
 
-    // Create wallet
+    // Create wallet on Arc Testnet — fresh ciphertext required
+    const cipherText2 = await getEntitySecretCipherText();
     const walletRes = await fetch("https://api.circle.com/v1/w3s/developer/wallets", {
       method: "POST",
       headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         idempotencyKey: crypto.randomUUID(),
-        entitySecretCipherText,
+        entitySecretCipherText: cipherText2,
         walletSetId,
-        blockchains: ["ETH-SEPOLIA"],
+        blockchains: ["ARC-TESTNET"],
         count: 1,
         metadata: [{ name: `Arcana-${email}`, refId: userId }]
       })
