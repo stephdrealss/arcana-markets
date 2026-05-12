@@ -1,5 +1,38 @@
-const CIRCLE_API_KEY = "TEST_API_KEY:8ef90e770e91ce1e32a3d92046ad4632:3f9e81424edda70841181ffe200d10ba";
-const otpStore = global.otpStore || (global.otpStore = {});
+const crypto = require('crypto');
+
+const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY;
+const ENTITY_SECRET = process.env.CIRCLE_ENTITY_SECRET;
+const OTP_SECRET = process.env.OTP_SECRET;
+
+function verifyToken(token, email, otp) {
+  try {
+    const decoded = Buffer.from(token, 'base64').toString();
+    const lastColon = decoded.lastIndexOf(':');
+    const hmac = decoded.slice(lastColon + 1);
+    const payload = decoded.slice(0, lastColon);
+    const parts = payload.split(':');
+    const expires = parts[parts.length - 1];
+    const storedOtp = parts[parts.length - 2];
+    const storedEmail = parts.slice(0, parts.length - 2).join(':');
+    if (storedEmail !== email || storedOtp !== otp) return false;
+    if (Date.now() > parseInt(expires)) return false;
+    const expectedHmac = crypto.createHmac('sha256', OTP_SECRET).update(payload).digest('hex');
+    return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expectedHmac));
+  } catch { return false; }
+}
+
+async function getEntitySecretCipherText() {
+  const res = await fetch('https://api.circle.com/v1/w3s/config/entity/publicKey', {
+    headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` }
+  });
+  const data = await res.json();
+  const publicKey = data.data.publicKey;
+  const encrypted = crypto.publicEncrypt(
+    { key: publicKey, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
+    Buffer.from(ENTITY_SECRET, 'hex')
+  );
+  return encrypted.toString('base64');
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -8,41 +41,67 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { email, otp } = req.body;
-  const stored = otpStore[email];
-  if (!stored || stored.otp !== otp || Date.now() > stored.expires) {
+  const { email, otp, token } = req.body;
+  if (!email || !otp || !token) return res.status(400).json({ error: "Missing fields" });
+
+  if (!verifyToken(token, email, otp)) {
     return res.status(400).json({ error: "Invalid or expired code" });
   }
-  delete otpStore[email];
 
   try {
-    // Create Circle user with real API
-    const userId = "arcana_" + email.replace(/[^a-zA-Z0-9]/g, "_") + "_" + Date.now();
-    const circleRes = await fetch("https://api.circle.com/v1/w3s/users", {
+    const userId = "arcana_" + email.replace(/[^a-zA-Z0-9]/g, "_");
+    const entitySecretCipherText = await getEntitySecretCipherText();
+
+    // Create Circle user (ignored if already exists)
+    await fetch("https://api.circle.com/v1/w3s/users", {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${CIRCLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ userId }),
+      headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ userId })
     });
 
-    let walletAddress;
-    if (circleRes.ok) {
-      const circleData = await circleRes.json();
-      walletAddress = circleData?.data?.wallets?.[0]?.address;
+    // Check if user already has a wallet
+    const walletsRes = await fetch(`https://api.circle.com/v1/w3s/wallets?userId=${userId}`, {
+      headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}` }
+    });
+    const walletsData = await walletsRes.json();
+    const existingWallet = walletsData?.data?.wallets?.[0]?.address;
+    if (existingWallet) {
+      return res.status(200).json({ success: true, walletAddress: existingWallet, userId });
     }
 
-    // Fallback address if Circle API doesn't return one yet
-    if (!walletAddress) {
-      const hash = email.split("").reduce((h, c) => Math.imul(31, h) + c.charCodeAt(0) | 0, 0);
-      walletAddress = "0x" + Math.abs(hash).toString(16).padStart(40, "0").slice(0, 40);
-    }
+    // Create wallet set
+    const wsRes = await fetch("https://api.circle.com/v1/w3s/developer/walletSets", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        idempotencyKey: crypto.randomUUID(),
+        entitySecretCipherText,
+        name: "Arcana Markets"
+      })
+    });
+    const wsData = await wsRes.json();
+    const walletSetId = wsData?.data?.walletSet?.id;
+    if (!walletSetId) throw new Error("Failed to create wallet set: " + JSON.stringify(wsData));
+
+    // Create wallet
+    const walletRes = await fetch("https://api.circle.com/v1/w3s/developer/wallets", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        idempotencyKey: crypto.randomUUID(),
+        entitySecretCipherText,
+        walletSetId,
+        blockchains: ["ETH-SEPOLIA"],
+        count: 1,
+        metadata: [{ name: `Arcana-${email}`, refId: userId }]
+      })
+    });
+    const walletData = await walletRes.json();
+    const walletAddress = walletData?.data?.wallets?.[0]?.address;
+    if (!walletAddress) throw new Error("Wallet creation failed: " + JSON.stringify(walletData));
 
     return res.status(200).json({ success: true, walletAddress, userId });
   } catch (e) {
-    const hash = email.split("").reduce((h, c) => Math.imul(31, h) + c.charCodeAt(0) | 0, 0);
-    const walletAddress = "0x" + Math.abs(hash).toString(16).padStart(40, "0").slice(0, 40);
-    return res.status(200).json({ success: true, walletAddress });
+    return res.status(500).json({ error: e.message || "Wallet creation failed" });
   }
 };
