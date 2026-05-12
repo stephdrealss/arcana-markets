@@ -6,7 +6,8 @@ import { WalletModal, BridgePanel, UnifiedBalancePanel, ERC8183JobPanel } from '
 const CONTRACT_ADDRESS = "0x443a47eF1025e047879b1BA08c94e6dedB354D54";
 const USDC_ADDRESS = "0x3600000000000000000000000000000000000000";
 const ARC_CHAIN_ID = "0x4cef52";
-const ARC_RPC = "https://rpc.testnet.arc.network";
+const ARC_RPC =
+  "https://rpc.testnet.arc.network";
 
 // ── STORAGE HELPERS ───────────────────────────────────────────────────────────
 const LS = {
@@ -1161,7 +1162,7 @@ export default function ArcanaMarkets(){
   const [tickIdx,setTickIdx]=useState(0);
   const [resolutions,setResolutions]=useState(()=>getResolutions());
   const [isOwner,setIsOwner]=useState(false);
-  const [stats,setStats]=useState(()=>buildStats([]));
+  const [stats,setStats]=useState(()=>buildStats([]));const [dropdownOpen,setDropdownOpen]=useState(false);
 
   const t=dark?THEMES.dark:THEMES.light;
   const toggleTheme=()=>{const n=!dark;setDark(n);LS.set("arcana_theme",n);};
@@ -1355,10 +1356,20 @@ export default function ArcanaMarkets(){
                 {dark?"🌙":"☀️"}
               </div>
             </button>
-            {account?(
-              <button onClick={disconnectWallet} style={{padding:"7px 16px",background:t.blue,color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"monospace"}}>
-                ◈ {account.slice(0,6)}...{account.slice(-4)} ✕
-              </button>
+           {account?(
+              <div style={{position:"relative"}}>
+                <button onClick={()=>setDropdownOpen(o=>!o)} style={{padding:"7px 16px",background:t.blue,color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"monospace"}}>
+                  ◈ {account.slice(0,6)}...{account.slice(-4)} ▾
+                </button>
+                {dropdownOpen&&(<>
+                  <div onClick={()=>setDropdownOpen(false)} style={{position:"fixed",inset:0,zIndex:199}}/>
+                  <div style={{position:"absolute",right:0,top:"calc(100% + 6px)",background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:10,padding:8,minWidth:220,zIndex:200,boxShadow:t.shadow}}>
+                    <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,padding:"4px 8px 8px",wordBreak:"break-all"}}>{account}</div>
+                    <button onClick={()=>{navigator.clipboard.writeText(account);setDropdownOpen(false);}} style={{display:"block",width:"100%",padding:"8px 12px",background:"none",border:"none",borderRadius:7,color:t.text,fontSize:13,cursor:"pointer",textAlign:"left",fontFamily:"monospace"}}>📋 Copy Address</button>
+                    <button onClick={()=>{disconnectWallet();setDropdownOpen(false);}} style={{display:"block",width:"100%",padding:"8px 12px",background:"none",border:"none",borderRadius:7,color:t.red,fontSize:13,cursor:"pointer",textAlign:"left",fontFamily:"monospace"}}>✕ Disconnect</button>
+                  </div>
+                </>)}
+              </div>
             ):(
               <WalletModal t={t} account={account} onConnected={(addr) => { setAccount(addr); LS.set("arcana_last_wallet", addr); refreshBal(addr); loadWalletData(addr); checkOwner(addr); }} onDisconnected={disconnectWallet} />
                
