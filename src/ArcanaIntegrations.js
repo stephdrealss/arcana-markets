@@ -24,9 +24,6 @@ const USDC_ABI_FULL = [
   { name:"balanceOf",type:"function",stateMutability:"view",inputs:[{name:"account",type:"address"}],outputs:[{type:"uint256"}]},
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HOOK: useCircleWallet — real email + OTP flow via /api/send-otp & /api/verify-otp
-// ─────────────────────────────────────────────────────────────────────────────
 export function useCircleWallet() {
   const [circleAddress, setCircleAddress] = useState(null);
   const [circleLoading, setCircleLoading] = useState(false);
@@ -34,7 +31,7 @@ export function useCircleWallet() {
   const [circleOtp, setCircleOtp]         = useState("");
   const [circleToken, setCircleToken]     = useState("");
   const [circleError, setCircleError]     = useState("");
-  const [circleStep, setCircleStep]       = useState("idle"); // idle | otp | connected
+  const [circleStep, setCircleStep]       = useState("idle");
 
   const sendOtp = useCallback(async (email) => {
     setCircleLoading(true);
@@ -93,14 +90,12 @@ export function useCircleWallet() {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENT: WalletModal
-// ─────────────────────────────────────────────────────────────────────────────
 export function WalletModal({ t, account, onConnected, onDisconnected }) {
   const [open, setOpen]             = useState(false);
   const [evmLoading, setEvmLoading] = useState(null);
   const [evmError, setEvmError]     = useState("");
   const modalRef                    = useRef(null);
+  const dropdownRef                 = useRef(null);
 
   const {
     circleAddress, circleLoading, circleEmail, setCircleEmail,
@@ -108,19 +103,22 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
     circleError, circleStep, sendOtp, verifyOtp, disconnectCircle,
   } = useCircleWallet();
 
+  const [copied, setCopied] = useState(false);
+
   useEffect(() => {
     const handler = (e) => {
       if (open && modalRef.current && !modalRef.current.contains(e.target)) setOpen(false);
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
   const EVM_WALLETS = [
-    { id: "metamask",     label: "MetaMask",       icon: "🦊", check: () => window.ethereum?.isMetaMask },
-    { id: "coinbase",     label: "Coinbase Wallet", icon: "🔵", check: () => window.ethereum?.isCoinbaseWallet },
-    { id: "walletconnect",label: "WalletConnect",   icon: "🔗", check: () => true },
-    { id: "injected",     label: "Browser Wallet",  icon: "🌐", check: () => !!window.ethereum },
+    { id: "metamask",     label: "MetaMask",       icon: "🦊" },
+    { id: "coinbase",     label: "Coinbase Wallet", icon: "🔵" },
+    { id: "walletconnect",label: "WalletConnect",   icon: "🔗" },
+    { id: "injected",     label: "Browser Wallet",  icon: "🌐" },
   ];
 
   const connectEVM = async (walletId) => {
@@ -152,15 +150,49 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   const handleDisconnect = () => {
     if (circleAddress) disconnectCircle();
     if (onDisconnected) onDisconnected();
+    setOpen(false);
   };
 
+  const handleCopy = () => {
+    navigator.clipboard.writeText(account);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // ── CONNECTED STATE — dropdown with copy + disconnect ──
   if (account) {
     return (
-      <button onClick={handleDisconnect} style={{ padding:"7px 16px", background:t.blue, color:"#fff", border:"none", borderRadius:8, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"monospace", display:"flex", alignItems:"center", gap:6 }}>
-        <span style={{ opacity:0.7 }}>◈</span>
-        {account.slice(0,6)}...{account.slice(-4)}
-        <span style={{ opacity:0.5, marginLeft:2 }}>✕</span>
-      </button>
+      <div style={{ position:"relative" }} ref={dropdownRef}>
+        <button
+          onClick={() => setOpen(o => !o)}
+          style={{ padding:"7px 16px", background:t.blue, color:"#fff", border:"none", borderRadius:8, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"monospace", display:"flex", alignItems:"center", gap:6 }}
+        >
+          <span style={{ opacity:0.7 }}>◈</span>
+          {account.slice(0,6)}...{account.slice(-4)}
+          <span style={{ opacity:0.5, marginLeft:2 }}>▾</span>
+        </button>
+
+        {open && (
+          <div style={{ position:"absolute", right:0, top:"calc(100% + 6px)", background:t.surface, border:`1.5px solid ${t.border}`, borderRadius:12, padding:8, minWidth:240, zIndex:400, boxShadow:"0 8px 32px rgba(0,0,0,0.4)" }}>
+            <div style={{ padding:"8px 10px 10px", borderBottom:`1px solid ${t.border}`, marginBottom:6 }}>
+              <p style={{ fontSize:10, color:t.textMuted, fontFamily:"monospace", margin:"0 0 4px", letterSpacing:1 }}>WALLET ADDRESS</p>
+              <p style={{ fontSize:11, color:t.text, fontFamily:"monospace", margin:0, wordBreak:"break-all", lineHeight:1.5 }}>{account}</p>
+            </div>
+            <button
+              onClick={handleCopy}
+              style={{ width:"100%", padding:"9px 10px", background:t.blueDim, border:`1px solid ${t.blueBorder}`, borderRadius:8, color:t.blue, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"monospace", marginBottom:6, textAlign:"left" }}
+            >
+              {copied ? "✓ Copied!" : "Copy Address"}
+            </button>
+            <button
+              onClick={handleDisconnect}
+              style={{ width:"100%", padding:"9px 10px", background:t.redBg || "rgba(239,68,68,0.1)", border:`1px solid ${t.redBorder || "rgba(239,68,68,0.3)"}`, borderRadius:8, color:t.red || "#ef4444", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"monospace", textAlign:"left" }}
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -183,8 +215,6 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
             </div>
 
             <div style={{ padding:"16px 24px 24px" }}>
-
-              {/* ── CIRCLE WALLET ── */}
               <div style={{ background:"linear-gradient(135deg,#1d4ed8 0%,#2563eb 50%,#1e40af 100%)", borderRadius:14, padding:"18px 20px", marginBottom:16, border:"1.5px solid rgba(255,255,255,0.1)" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
                   <div style={{ width:36, height:36, borderRadius:10, background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>⬡</div>
@@ -197,19 +227,10 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
 
                 {circleStep === "idle" && (
                   <div style={{ display:"flex", gap:8 }}>
-                    <input
-                      type="email"
-                      placeholder="your@email.com"
-                      value={circleEmail}
-                      onChange={e => setCircleEmail(e.target.value)}
-                      onKeyDown={e => e.key === "Enter" && sendOtp(circleEmail)}
-                      style={{ flex:1, background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, outline:"none" }}
-                    />
-                    <button
-                      onClick={() => sendOtp(circleEmail)}
-                      disabled={circleLoading || !circleEmail}
-                      style={{ padding:"9px 16px", background:"#fff", color:"#1d4ed8", border:"none", borderRadius:8, fontWeight:800, fontSize:13, cursor:circleLoading ? "not-allowed" : "pointer", whiteSpace:"nowrap" }}
-                    >
+                    <input type="email" placeholder="your@email.com" value={circleEmail} onChange={e => setCircleEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && sendOtp(circleEmail)}
+                      style={{ flex:1, background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, outline:"none" }} />
+                    <button onClick={() => sendOtp(circleEmail)} disabled={circleLoading || !circleEmail}
+                      style={{ padding:"9px 16px", background:"#fff", color:"#1d4ed8", border:"none", borderRadius:8, fontWeight:800, fontSize:13, cursor:circleLoading?"not-allowed":"pointer", whiteSpace:"nowrap" }}>
                       {circleLoading ? "⏳" : "Send Code"}
                     </button>
                   </div>
@@ -219,19 +240,12 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
                   <div>
                     <p style={{ color:"rgba(255,255,255,0.7)", fontSize:11, fontFamily:"monospace", margin:"0 0 8px" }}>Code sent to {circleEmail}</p>
                     <div style={{ display:"flex", gap:8 }}>
-                      <input
-                        type="text"
-                        placeholder="6-digit code"
-                        value={circleOtp}
-                        onChange={e => setCircleOtp(e.target.value)}
+                      <input type="text" placeholder="6-digit code" value={circleOtp} onChange={e => setCircleOtp(e.target.value)}
                         onKeyDown={e => e.key === "Enter" && verifyOtp(circleEmail, circleOtp, circleToken).then(addr => { if (addr) { onConnected(addr); setOpen(false); } })}
-                        style={{ flex:1, background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, outline:"none", letterSpacing:4, fontFamily:"monospace" }}
-                      />
-                      <button
-                        onClick={() => verifyOtp(circleEmail, circleOtp, circleToken).then(addr => { if (addr) { onConnected(addr); setOpen(false); } })}
+                        style={{ flex:1, background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, outline:"none", letterSpacing:4, fontFamily:"monospace" }} />
+                      <button onClick={() => verifyOtp(circleEmail, circleOtp, circleToken).then(addr => { if (addr) { onConnected(addr); setOpen(false); } })}
                         disabled={circleLoading || !circleOtp}
-                        style={{ padding:"9px 16px", background:"#fff", color:"#1d4ed8", border:"none", borderRadius:8, fontWeight:800, fontSize:13, cursor:circleLoading ? "not-allowed" : "pointer" }}
-                      >
+                        style={{ padding:"9px 16px", background:"#fff", color:"#1d4ed8", border:"none", borderRadius:8, fontWeight:800, fontSize:13, cursor:circleLoading?"not-allowed":"pointer" }}>
                         {circleLoading ? "⏳" : "Verify →"}
                       </button>
                     </div>
@@ -247,23 +261,19 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
                   </div>
                 )}
 
-                {circleError && (
-                  <p style={{ color:"#fca5a5", fontSize:11, fontFamily:"monospace", margin:"8px 0 0" }}>✕ {circleError}</p>
-                )}
+                {circleError && <p style={{ color:"#fca5a5", fontSize:11, fontFamily:"monospace", margin:"8px 0 0" }}>✕ {circleError}</p>}
               </div>
 
-              {/* ── DIVIDER ── */}
               <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
                 <div style={{ flex:1, height:1, background:t.border }} />
                 <span style={{ fontSize:11, color:t.textMuted, fontFamily:"monospace" }}>OR USE EVM WALLET</span>
                 <div style={{ flex:1, height:1, background:t.border }} />
               </div>
 
-              {/* ── EVM WALLETS ── */}
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 {EVM_WALLETS.map(w => (
                   <button key={w.id} onClick={() => connectEVM(w.id)} disabled={!!evmLoading}
-                    style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", background:t.bg, border:`1.5px solid ${evmLoading===w.id ? t.blue : t.border}`, borderRadius:12, cursor:evmLoading?"not-allowed":"pointer", width:"100%" }}
+                    style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", background:t.bg, border:`1.5px solid ${evmLoading===w.id?t.blue:t.border}`, borderRadius:12, cursor:evmLoading?"not-allowed":"pointer", width:"100%" }}
                     onMouseEnter={e => { if (!evmLoading) e.currentTarget.style.borderColor = t.blue; }}
                     onMouseLeave={e => { if (evmLoading !== w.id) e.currentTarget.style.borderColor = t.border; }}
                   >
@@ -271,14 +281,12 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
                     <span style={{ fontSize:13, fontWeight:600, color:t.text, flex:1, textAlign:"left" }}>{w.label}</span>
                     {evmLoading === w.id
                       ? <span style={{ fontSize:11, color:t.blue, fontFamily:"monospace" }}>Connecting...</span>
-                      : <span style={{ fontSize:11, color:t.textMuted, fontFamily:"monospace" }}>→</span>
-                    }
+                      : <span style={{ fontSize:11, color:t.textMuted, fontFamily:"monospace" }}>→</span>}
                   </button>
                 ))}
               </div>
 
               {evmError && <p style={{ color:t.red, fontSize:11, fontFamily:"monospace", margin:"10px 0 0" }}>✕ {evmError}</p>}
-
               <p style={{ fontSize:10, color:t.textMuted, fontFamily:"monospace", textAlign:"center", marginTop:14 }}>
                 Connects to Arc Testnet · USDC settlement · Powered by Circle
               </p>
@@ -290,9 +298,6 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENT: BridgePanel
-// ─────────────────────────────────────────────────────────────────────────────
 export function BridgePanel({ t, account }) {
   const [open, setOpen]         = useState(false);
   const [srcChain, setSrcChain] = useState("Ethereum_Sepolia");
@@ -401,9 +406,6 @@ export function BridgePanel({ t, account }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENT: UnifiedBalancePanel
-// ─────────────────────────────────────────────────────────────────────────────
 export function UnifiedBalancePanel({ t, account }) {
   const [balance, setBalance]       = useState("0.00");
   const [loading, setLoading]       = useState(false);
@@ -474,9 +476,6 @@ export function UnifiedBalancePanel({ t, account }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENT: ERC8183JobPanel
-// ─────────────────────────────────────────────────────────────────────────────
 export function ERC8183JobPanel({ t, account, marketId, marketTitle, marketEndTime }) {
   const [step, setStep]           = useState("idle");
   const [jobId, setJobId]         = useState(null);
