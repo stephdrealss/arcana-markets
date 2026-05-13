@@ -1093,7 +1093,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                   </div>
                 ))}
               </div>
-             
+             <a href={`https://testnet.arcscan.app/tx/${txHash}`} target="_blank" rel="noreferrer" style={{display:"block",textAlign:"center",fontSize:12,color:t.blue,fontFamily:"monospace",textDecoration:"none",marginBottom:12}}>↗ View on ArcScan</a>
               <button onClick={onClose} style={{width:"100%",padding:"10px",background:t.blue,color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer"}}>Done</button>
             </div>
           ):(
