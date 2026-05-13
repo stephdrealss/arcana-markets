@@ -1162,7 +1162,7 @@ export default function ArcanaMarkets(){
   const [tickIdx,setTickIdx]=useState(0);
   const [resolutions,setResolutions]=useState(()=>getResolutions());
   const [isOwner,setIsOwner]=useState(false);
-  const [stats,setStats]=useState(()=>buildStats([]));const [dropdownOpen,setDropdownOpen]=useState(false);
+  const [stats,setStats]=useState(()=>buildStats([]));const [dropdownOpen,setDropdownOpen]=useState(false); const [copied,setCopied]=useState(false);
 
   const t=dark?THEMES.dark:THEMES.light;
   const toggleTheme=()=>{const n=!dark;setDark(n);LS.set("arcana_theme",n);};
@@ -1356,21 +1356,38 @@ export default function ArcanaMarkets(){
                 {dark?"🌙":"☀️"}
               </div>
             </button>
-           {account?(
-              <div style={{position:"relative"}}>
-                <button onClick={()=>setDropdownOpen(o=>!o)} style={{padding:"7px 16px",background:t.blue,color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"monospace"}}>
-                  ◈ {account.slice(0,6)}...{account.slice(-4)} ▾
-                </button>
-                {dropdownOpen&&(<>
-                  <div onClick={()=>setDropdownOpen(false)} style={{position:"fixed",inset:0,zIndex:199}}/>
-                  <div style={{position:"absolute",right:0,top:"calc(100% + 6px)",background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:10,padding:8,minWidth:220,zIndex:200,boxShadow:t.shadow}}>
-                    <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,padding:"4px 8px 8px",wordBreak:"break-all"}}>{account}</div>
-                    <button onClick={()=>{navigator.clipboard.writeText(account);setDropdownOpen(false);}} style={{display:"block",width:"100%",padding:"8px 12px",background:"none",border:"none",borderRadius:7,color:t.text,fontSize:13,cursor:"pointer",textAlign:"left",fontFamily:"monospace"}}>📋 Copy Address</button>
-                    <button onClick={()=>{disconnectWallet();setDropdownOpen(false);}} style={{display:"block",width:"100%",padding:"8px 12px",background:"none",border:"none",borderRadius:7,color:t.red,fontSize:13,cursor:"pointer",textAlign:"left",fontFamily:"monospace"}}>✕ Disconnect</button>
-                  </div>
-                </>)}
-              </div>
-            ):(
+          {account?(
+  <div style={{position:"relative"}}>
+    <button onClick={()=>setDropdownOpen(o=>!o)} style={{padding:"8px 18px",background:`linear-gradient(135deg,${t.blue},#7C3AED)`,color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"monospace",boxShadow:`0 0 18px ${t.blue}66`,letterSpacing:0.3,display:"flex",alignItems:"center",gap:8}}>
+      <span style={{fontSize:16}}>◈</span>{account.slice(0,6)}...{account.slice(-4)}<span style={{fontSize:10,opacity:0.8}}>▾</span>
+    </button>
+    {dropdownOpen&&(<>
+      <div onClick={()=>setDropdownOpen(false)} style={{position:"fixed",inset:0,zIndex:199}}/>
+      <div style={{position:"absolute",right:0,top:"calc(100% + 10px)",background:t.surface,border:`1.5px solid ${t.blue}`,borderRadius:16,padding:16,minWidth:280,zIndex:200,boxShadow:`0 8px 32px ${t.blue}44,0 2px 8px rgba(0,0,0,0.3)`}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${t.border}`}}>
+          <div style={{width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${t.blue},#7C3AED)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>◈</div>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,fontFamily:"monospace",marginBottom:2,letterSpacing:1}}>CONNECTED WALLET</div>
+            <div style={{fontSize:12,fontWeight:700,color:t.text,fontFamily:"monospace"}}>{account.slice(0,10)}...{account.slice(-6)}</div>
+          </div>
+        </div>
+        <div style={{background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:12,color:t.textMuted,fontFamily:"monospace"}}>USDC Balance</span>
+          <span style={{fontSize:16,fontWeight:800,color:t.green,fontFamily:"monospace"}}>${usdcBalance}</span>
+        </div>
+        <button onClick={()=>{navigator.clipboard.writeText(account);setCopied(true);setTimeout(()=>setCopied(false),2000);}} style={{display:"flex",width:"100%",padding:"10px 14px",background:copied?t.greenBg:t.blueDim,border:`1px solid ${copied?t.greenBorder:t.blueBorder}`,borderRadius:10,color:copied?t.green:t.blue,fontSize:13,cursor:"pointer",fontFamily:"monospace",fontWeight:600,alignItems:"center",gap:8,marginBottom:8,transition:"all 0.2s",boxSizing:"border-box"}}>
+          {copied?"✓ Copied!":"📋 Copy Address"}
+        </button>
+        <a href={`https://testnet.arcscan.app/address/${account}`} target="_blank" rel="noreferrer" style={{display:"flex",width:"100%",padding:"10px 14px",background:t.surfaceAlt,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:13,fontFamily:"monospace",fontWeight:600,alignItems:"center",gap:8,marginBottom:8,textDecoration:"none"}}>
+          ↗ View on ArcScan
+        </a>
+        <button onClick={()=>{disconnectWallet();setDropdownOpen(false);}} style={{display:"flex",width:"100%",padding:"10px 14px",background:t.redBg,border:`1px solid ${t.redBorder}`,borderRadius:10,color:t.red,fontSize:13,cursor:"pointer",fontFamily:"monospace",fontWeight:600,alignItems:"center",gap:8,transition:"all 0.2s",boxSizing:"border-box"}}>
+          ✕ Disconnect Wallet
+        </button>
+      </div>
+    </>)}
+  </div>
+):(
               <WalletModal t={t} account={account} onConnected={(addr) => { setAccount(addr); LS.set("arcana_last_wallet", addr); refreshBal(addr); loadWalletData(addr); checkOwner(addr); }} onDisconnected={disconnectWallet} />
                
                       )}
