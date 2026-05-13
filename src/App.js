@@ -1094,7 +1094,6 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                 ))}
               </div>
               <a href={`https://testnet.arcscan.app/tx/${txHash}`} target="_blank" rel="noreferrer"
-                style={{display:"block",textAlign:"center",fontSize:12,color:t.blue,fontFamily:"monospace",textDecoration:"none",marginBottom:12}}>↗ View on ArcScan</a>
               <button onClick={onClose} style={{width:"100%",padding:"10px",background:t.blue,color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer"}}>Done</button>
             </div>
           ):(
@@ -1226,7 +1225,7 @@ export default function ArcanaMarkets(){
   const disconnectWallet=()=>{
     LS.set("arcana_user_disconnected",true);
     LS.set("arcana_last_wallet",null);
-    setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);
+    setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);if(window.ethereum){window.ethereum.request({method:"wallet_revokePermissions",params:[{eth_accounts:{}}]}).catch(()=>{});}
   };
 
   useEffect(()=>{
@@ -1241,7 +1240,7 @@ export default function ArcanaMarkets(){
     }
     if(window.ethereum){
       const h=(accs)=>{
-        const addr=accs[0]||null;
+        const addr=accs[0]||null        if(LS.get("arcana_user_disconnected",false))return;;
         if(addr){LS.set("arcana_user_disconnected",false);LS.set("arcana_last_wallet",addr);setAccount(addr);refreshBal(addr);loadWalletData(addr);checkOwner(addr);}
         else{LS.set("arcana_last_wallet",null);setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);}
       };
