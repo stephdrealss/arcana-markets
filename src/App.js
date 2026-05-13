@@ -1240,7 +1240,8 @@ export default function ArcanaMarkets(){
     }
     if(window.ethereum){
       const h=(accs)=>{
-        const addr=accs[0]||null        if(LS.get("arcana_user_disconnected",false))return;;
+               if(LS.get("arcana_user_disconnected",false))return;
+        const addr=accs[0]||null;
         if(addr){LS.set("arcana_user_disconnected",false);LS.set("arcana_last_wallet",addr);setAccount(addr);refreshBal(addr);loadWalletData(addr);checkOwner(addr);}
         else{LS.set("arcana_last_wallet",null);setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);}
       };
