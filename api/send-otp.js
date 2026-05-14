@@ -1,17 +1,19 @@
 const crypto = require('crypto');
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const OTP_SECRET = process.env.OTP_SECRET;
+const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY;
+const ENTITY_SECRET = process.env.CIRCLE_ENTITY_SECRET;
 
-function generateOTP() {
-  return crypto.randomInt(100000, 999999).toString();
-}
-
-function createToken(email, otp) {
-  const expires = Date.now() + 10 * 60 * 1000;
-  const payload = `${email}:${otp}:${expires}`;
-  const hmac = crypto.createHmac('sha256', OTP_SECRET).update(payload).digest('hex');
-  return Buffer.from(`${payload}:${hmac}`).toString('base64');
+async function getEntitySecretCipherText() {
+  const res = await fetch('https://api.circle.com/v1/w3s/config/entity/publicKey', {
+    headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` }
+  });
+  const data = await res.json();
+  const publicKey = data.data.publicKey;
+  const encrypted = crypto.publicEncrypt(
+    { key: publicKey, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
+    Buffer.from(ENTITY_SECRET, 'hex')
+  );
+  return encrypted.toString('base64');
 }
 
 module.exports = async function handler(req, res) {
@@ -21,41 +23,46 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { email } = req.body;
-  if (!email || !email.includes("@")) return res.status(400).json({ error: "Invalid email" });
-
-  const otp = generateOTP();
-  const token = createToken(email, otp);
+  const { walletId, contractAddress, abiFunctionSignature, abiParameters } = req.body;
+  if (!walletId || !contractAddress || !abiFunctionSignature)
+    return res.status(400).json({ error: "Missing fields" });
 
   try {
-    const response = await fetch("https://api.resend.com/emails", {
+    const entitySecretCipherText = await getEntitySecretCipherText();
+
+    const txRes = await fetch("https://api.circle.com/v1/w3s/developer/transactions/contractExecution", {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "Arcana Markets <onboarding@resend.dev>",
-        to: [email],
-        subject: "Your Arcana Markets verification code",
-        html: `
-          <div style="font-family:monospace;max-width:400px;margin:0 auto;padding:40px 20px;background:#07061A;color:#E8E8F0;border-radius:16px;">
-            <h2 style="color:#4F8EF7;margin-bottom:8px;">◈ Arcana Markets</h2>
-            <p style="color:#8B8BA8;margin-bottom:24px;">Your verification code:</p>
-            <div style="font-size:48px;font-weight:800;letter-spacing:12px;color:#fff;background:#15122E;padding:20px;border-radius:12px;text-align:center;margin-bottom:24px;">${otp}</div>
-            <p style="color:#8B8BA8;font-size:12px;">Expires in 10 minutes. Do not share this code.</p>
-          </div>
-        `,
-      }),
+        idempotencyKey: crypto.randomUUID(),
+        walletId,
+        contractAddress,
+        abiFunctionSignature,
+        abiParameters: abiParameters || [],
+        feeLevel: "MEDIUM",
+        entitySecretCipherText
+      })
     });
 
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.message || "Failed to send email");
-    }
+    const txData = await txRes.json();
+    if (!txRes.ok) throw new Error(txData?.message || JSON.stringify(txData));
 
-    return res.status(200).json({ success: true, token });
+    const transactionId = txData?.data?.id;
+    if (!transactionId) throw new Error("No transaction ID: " + JSON.stringify(txData));
+
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const statusRes = await fetch(`https://api.circle.com/v1/w3s/transactions/${transactionId}`, {
+        headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}` }
+      });
+      const statusData = await statusRes.json();
+      const tx = statusData?.data?.transaction;
+      if (tx?.txHash) return res.status(200).json({ success: true, txHash: tx.txHash });
+      if (tx?.state === 'FAILED' || tx?.state === 'CANCELLED')
+        throw new Error("Transaction failed: " + (tx.errorReason || tx.state));
+    }
+    throw new Error("Timed out waiting for confirmation");
   } catch (e) {
-    return res.status(500).json({ error: e.message || "Failed to send email" });
+    return res.status(500).json({ error: e.message || "Transaction failed" });
   }
 };
