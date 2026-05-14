@@ -6,7 +6,8 @@ import { WalletModal, BridgePanel, UnifiedBalancePanel, ERC8183JobPanel } from '
 const CONTRACT_ADDRESS = "0x443a47eF1025e047879b1BA08c94e6dedB354D54";
 const USDC_ADDRESS = "0x3600000000000000000000000000000000000000";
 const ARC_CHAIN_ID = "0x4cef52";
-const ARC_RPC = "https://rpc.testnet.arc.network";
+const ARC_RPC =
+  "https://rpc.testnet.arc.network";
 
 // ── STORAGE HELPERS ───────────────────────────────────────────────────────────
 const LS = {
@@ -178,49 +179,58 @@ const MARKET_ID_MAP={1:"Market #1",2:"BTC hits $120K before July 2026?",3:"ETH f
 
 async function fetchLiveTrades() {
   const seedHashes = new Set(ACTIVITY_SEED.map(t => t.txHash));
+  const allItems = [];
   try {
-    const url = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/logs?topic0=${SHARES_BOUGHT_SIG}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Logs API error");
-    const data = await res.json();
-    const items = data.items || [];
-    return items
-      .filter(item => !seedHashes.has(item.transaction_hash))
-      .map(item => {
-        const marketId = item.topics?.[1] ? parseInt(item.topics[1], 16) : 0;
-        const dataHex = (item.data || "").replace("0x","");
-        const isYes = dataHex.length >= 64 ? parseInt(dataHex.slice(0,64),16) === 1 : true;
-        const usdc = dataHex.length >= 128 ? Math.round(parseInt(dataHex.slice(64,128),16)/1e4)/100 : 0;
-        const buyer = item.topics?.[2] ? "0x"+item.topics[2].slice(-40) : "";
-        return {
-          from: buyer,
-          shortAddr: `${buyer.slice(0,6)}...${buyer.slice(-4)}`,
-          txHash: item.transaction_hash,
-          time: (item.timestamp||"").slice(0,16),
-          market: MARKET_ID_MAP[marketId] || `Market #${marketId}`,
-          side: isYes ? "YES" : "NO",
-          usdc,
-        };
-      });
-  } catch(e) {
-    try {
-      const url2 = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&filter=to`;
-      const res2 = await fetch(url2);
-      if (!res2.ok) throw new Error();
-      const data2 = await res2.json();
-      return (data2.items||[])
-        .filter(item => !seedHashes.has(item.tx_hash))
-        .map(item => ({
-          from: item.from?.hash||"",
-          shortAddr: `${(item.from?.hash||"").slice(0,6)}...${(item.from?.hash||"").slice(-4)}`,
-          txHash: item.tx_hash,
-          time: (item.timestamp||"").slice(0,16),
-          market: "Trade on Arcana Markets",
-          side: "",
-          usdc: Math.round(Number(item.total?.value||0)/1e4)/100,
-        }));
-    } catch(e2) { return []; }
-  }
+    // Fetch ALL pages
+    let url = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/logs?topic0=${SHARES_BOUGHT_SIG}`;
+    let pages = 0;
+    while (url && pages < 10) {
+      const res = await fetch(url);
+      if (!res.ok) break;
+      const data = await res.json();
+      const items = data.items || [];
+      allItems.push(...items);
+      url = data.next_page_params ? `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/logs?topic0=${SHARES_BOUGHT_SIG}&${new URLSearchParams(data.next_page_params)}` : null;
+      pages++;
+    }
+    if (allItems.length > 0) {
+      return allItems
+        .filter(item => !seedHashes.has(item.transaction_hash))
+        .map(item => {
+          const marketId = item.topics?.[1] ? parseInt(item.topics[1], 16) : 0;
+          const dataHex = (item.data || "").replace("0x","");
+          const isYes = dataHex.length >= 64 ? parseInt(dataHex.slice(0,64),16) === 1 : true;
+          const usdc = dataHex.length >= 128 ? Math.round(parseInt(dataHex.slice(64,128),16)/1e4)/100 : 0;
+          const buyer = item.topics?.[2] ? "0x"+item.topics[2].slice(-40) : "";
+          return {
+            from: buyer,
+            shortAddr: `${buyer.slice(0,6)}...${buyer.slice(-4)}`,
+            txHash: item.transaction_hash,
+            time: (item.timestamp||"").slice(0,16),
+            market: MARKET_ID_MAP[marketId] || `Market #${marketId}`,
+            side: isYes ? "YES" : "NO",
+            usdc,
+          };
+        });
+    }
+  } catch(e) {}
+  try {
+    const url2 = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&filter=to`;
+    const res2 = await fetch(url2);
+    if (!res2.ok) throw new Error();
+    const data2 = await res2.json();
+    return (data2.items||[])
+      .filter(item => !seedHashes.has(item.tx_hash))
+      .map(item => ({
+        from: item.from?.hash||"",
+        shortAddr: `${(item.from?.hash||"").slice(0,6)}...${(item.from?.hash||"").slice(-4)}`,
+        txHash: item.tx_hash,
+        time: (item.timestamp||"").slice(0,16),
+        market: "Trade on Arcana Markets",
+        side: "",
+        usdc: Math.round(Number(item.total?.value||0)/1e4)/100,
+      }));
+  } catch(e2) { return []; }
 }
 
 async function fetchWalletLiveHistory(walletAddr) {
@@ -278,26 +288,38 @@ function buildStats(liveStats=null, newTrades=[]) {
 
 async function fetchLiveStats() {
   try {
-    const [txRes, transferRes] = await Promise.all([
-      fetch(`https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/transactions?filter=to`),
-      fetch(`https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&filter=to`),
-    ]);
-    let uniqueTraders = CHAIN_STATS.uniqueTraders;
-    let totalTrades = CHAIN_STATS.totalTrades;
-    let totalVolume = CHAIN_STATS.totalVolume;
-    if (txRes.ok) {
-      const txData = await txRes.json();
-      const txs = (txData.items||[]).filter(tx=>tx.status==="ok");
-      const addrs = new Set(txs.map(tx=>tx.from?.hash?.toLowerCase()).filter(Boolean));
-      if (addrs.size > 0) uniqueTraders = Math.max(CHAIN_STATS.uniqueTraders, addrs.size);
-      if (txs.length > 0) totalTrades = Math.max(CHAIN_STATS.totalTrades, txs.length);
+    const allAddrs = new Set();
+    let allTrades = 0;
+    let totalVolume = 0;
+    // Fetch all tx pages
+    let txUrl = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/transactions?filter=to`;
+    let pages = 0;
+    while (txUrl && pages < 20) {
+      const res = await fetch(txUrl);
+      if (!res.ok) break;
+      const data = await res.json();
+      const txs = (data.items||[]).filter(tx=>tx.status==="ok");
+      txs.forEach(tx => { if(tx.from?.hash) allAddrs.add(tx.from.hash.toLowerCase()); });
+      allTrades += txs.length;
+      txUrl = data.next_page_params ? `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/transactions?filter=to&${new URLSearchParams(data.next_page_params)}` : null;
+      pages++;
     }
-    if (transferRes.ok) {
-      const transferData = await transferRes.json();
-      const vol = (transferData.items||[]).reduce((s,tx)=>s+(Number(tx.total?.value||0)/1e6),0);
-      if (vol > 0) totalVolume = Math.max(CHAIN_STATS.totalVolume, vol);
+    // Fetch all transfer pages for volume
+    let volUrl = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&filter=to`;
+    pages = 0;
+    while (volUrl && pages < 20) {
+      const res = await fetch(volUrl);
+      if (!res.ok) break;
+      const data = await res.json();
+      totalVolume += (data.items||[]).reduce((s,tx)=>s+(Number(tx.total?.value||0)/1e6),0);
+      volUrl = data.next_page_params ? `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/token-transfers?token=${USDC_ADDRESS}&filter=to&${new URLSearchParams(data.next_page_params)}` : null;
+      pages++;
     }
-    return {totalTrades, uniqueTraders, totalVolume};
+    return {
+      totalTrades: Math.max(CHAIN_STATS.totalTrades, allTrades),
+      uniqueTraders: Math.max(CHAIN_STATS.uniqueTraders, allAddrs.size),
+      totalVolume: Math.max(CHAIN_STATS.totalVolume, totalVolume),
+    };
   } catch { return CHAIN_STATS; }
 }
 
@@ -1071,8 +1093,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                   </div>
                 ))}
               </div>
-              <a href={`https://testnet.arcscan.app/tx/${txHash}`} target="_blank" rel="noreferrer"
-                style={{display:"block",textAlign:"center",fontSize:12,color:t.blue,fontFamily:"monospace",textDecoration:"none",marginBottom:12}}>↗ View on ArcScan</a>
+             <a href={`https://testnet.arcscan.app/tx/${txHash}`} target="_blank" rel="noreferrer" style={{display:"block",textAlign:"center",fontSize:12,color:t.blue,fontFamily:"monospace",textDecoration:"none",marginBottom:12}}>↗ View on ArcScan</a>
               <button onClick={onClose} style={{width:"100%",padding:"10px",background:t.blue,color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer"}}>Done</button>
             </div>
           ):(
@@ -1140,9 +1161,7 @@ export default function ArcanaMarkets(){
   const [tickIdx,setTickIdx]=useState(0);
   const [resolutions,setResolutions]=useState(()=>getResolutions());
   const [isOwner,setIsOwner]=useState(false);
-  const [stats,setStats]=useState(()=>buildStats([]));
-  const [dropdownOpen,setDropdownOpen]=useState(false);
-  const [copied,setCopied]=useState(false);
+  const [stats,setStats]=useState(()=>buildStats([]));const [dropdownOpen,setDropdownOpen]=useState(false); const [copied,setCopied]=useState(false);
 
   const t=dark?THEMES.dark:THEMES.light;
   const toggleTheme=()=>{const n=!dark;setDark(n);LS.set("arcana_theme",n);};
@@ -1206,23 +1225,22 @@ export default function ArcanaMarkets(){
   const disconnectWallet=()=>{
     LS.set("arcana_user_disconnected",true);
     LS.set("arcana_last_wallet",null);
-    setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);
+    setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);if(window.ethereum){window.ethereum.request({method:"wallet_revokePermissions",params:[{eth_accounts:{}}]}).catch(()=>{});}
   };
 
   useEffect(()=>{
     const userDisconnected=LS.get("arcana_user_disconnected",false);
     const lastWallet=LS.get("arcana_last_wallet",null);
-    if(!userDisconnected&&window.ethereum){
+    if(!userDisconnected&&lastWallet&&window.ethereum){
       window.ethereum.request({method:"eth_accounts"}).then(accs=>{
-        if(accs&&accs.length>0){
-          const preferred=lastWallet?accs.find(a=>a.toLowerCase()===lastWallet.toLowerCase()):null;
-          const addr=preferred||accs[0];
-          setAccount(addr);LS.set("arcana_last_wallet",addr);refreshBal(addr);loadWalletData(addr);checkOwner(addr);
-        }
+        const still=accs.find(a=>a.toLowerCase()===lastWallet.toLowerCase());
+        if(still){setAccount(still);refreshBal(still);loadWalletData(still);checkOwner(still);}
+        else LS.set("arcana_last_wallet",null);
       }).catch(()=>{});
     }
     if(window.ethereum){
       const h=(accs)=>{
+               if(LS.get("arcana_user_disconnected",false))return;
         const addr=accs[0]||null;
         if(addr){LS.set("arcana_user_disconnected",false);LS.set("arcana_last_wallet",addr);setAccount(addr);refreshBal(addr);loadWalletData(addr);checkOwner(addr);}
         else{LS.set("arcana_last_wallet",null);setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);}
@@ -1311,7 +1329,7 @@ export default function ArcanaMarkets(){
       `}</style>
 
       {/* NAV */}
-      <nav style={{position:"sticky",top:0,zIndex:100,background:t.navBg,backdropFilter:"blur(12px)",borderBottom:`1px solid ${t.border}`}}>
+      <nav style={{position:"sticky",top:0,zIndex:100,background:t.navBg,borderBottom:`1px solid ${t.border}`}}>
         <div style={{maxWidth:1380,margin:"0 auto",padding:"0 20px",display:"flex",alignItems:"center",gap:16,height:56}}>
           <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,cursor:"pointer"}} onClick={()=>setPage("Markets")}>
             <div style={{width:32,height:32,borderRadius:10,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -1338,7 +1356,7 @@ export default function ArcanaMarkets(){
                 {dark?"🌙":"☀️"}
               </div>
             </button>
-            {account?(
+          {account?(
   <div style={{position:"relative"}}>
     <button onClick={()=>setDropdownOpen(o=>!o)} style={{padding:"8px 18px",background:`linear-gradient(135deg,${t.blue},#7C3AED)`,color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"monospace",boxShadow:`0 0 18px ${t.blue}66`,letterSpacing:0.3,display:"flex",alignItems:"center",gap:8}}>
       <span style={{fontSize:16}}>◈</span>{account.slice(0,6)}...{account.slice(-4)}<span style={{fontSize:10,opacity:0.8}}>▾</span>
@@ -1360,6 +1378,9 @@ export default function ArcanaMarkets(){
         <button onClick={()=>{navigator.clipboard.writeText(account);setCopied(true);setTimeout(()=>setCopied(false),2000);}} style={{display:"flex",width:"100%",padding:"10px 14px",background:copied?t.greenBg:t.blueDim,border:`1px solid ${copied?t.greenBorder:t.blueBorder}`,borderRadius:10,color:copied?t.green:t.blue,fontSize:13,cursor:"pointer",fontFamily:"monospace",fontWeight:600,alignItems:"center",gap:8,marginBottom:8,transition:"all 0.2s",boxSizing:"border-box"}}>
           {copied?"✓ Copied!":"📋 Copy Address"}
         </button>
+        <a href={`https://testnet.arcscan.app/address/${account}`} target="_blank" rel="noreferrer" style={{display:"flex",width:"100%",padding:"10px 14px",background:t.surfaceAlt,border:`1px solid ${t.border}`,borderRadius:10,color:t.text,fontSize:13,fontFamily:"monospace",fontWeight:600,alignItems:"center",gap:8,marginBottom:8,textDecoration:"none"}}>
+          ↗ View on ArcScan
+        </a>
         <button onClick={()=>{disconnectWallet();setDropdownOpen(false);}} style={{display:"flex",width:"100%",padding:"10px 14px",background:t.redBg,border:`1px solid ${t.redBorder}`,borderRadius:10,color:t.red,fontSize:13,cursor:"pointer",fontFamily:"monospace",fontWeight:600,alignItems:"center",gap:8,transition:"all 0.2s",boxSizing:"border-box"}}>
           ✕ Disconnect Wallet
         </button>
@@ -1368,7 +1389,8 @@ export default function ArcanaMarkets(){
   </div>
 ):(
               <WalletModal t={t} account={account} onConnected={(addr) => { setAccount(addr); LS.set("arcana_last_wallet", addr); refreshBal(addr); loadWalletData(addr); checkOwner(addr); }} onDisconnected={disconnectWallet} />
-            )}
+               
+                      )}
           </div>
         </div>
       </nav>
