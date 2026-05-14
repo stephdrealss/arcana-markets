@@ -1002,7 +1002,7 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled}
 }
 
 // ── TRADE MODAL ───────────────────────────────────────────────────────────────
-function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,onActivityAdded}){
+function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,onActivityAdded,walletType,walletId}){
   const [side,setSide]=useState(initSide||"YES");
   const [amt,setAmt]=useState("");
   const [done,setDone]=useState(false);
@@ -1040,27 +1040,45 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
     if(parseFloat(usdcBalance)<parseFloat(amt)){setError(`Insufficient USDC. You have ${usdcBalance}`);return;}
     setLoading(true);setError("");
     try{
-      setLoadingMsg("Switching to Arc Testnet...");
-      await switchToArc();
-      const provider=new ethers.providers.Web3Provider(window.ethereum);
-      const signer=provider.getSigner();
-      const usdcContract=new ethers.Contract(USDC_ADDRESS,USDC_ABI,signer);
-      const arcanaContract=new ethers.Contract(CONTRACT_ADDRESS,CONTRACT_ABI,signer);
-      const usdcAmt=ethers.utils.parseUnits(parseFloat(amt).toFixed(6),6);
-      setLoadingMsg("Step 1/2: Approve USDC spend in wallet...");
-      const approveTx=await usdcContract.approve(CONTRACT_ADDRESS,usdcAmt);
-      setLoadingMsg("Waiting for approval confirmation...");
-      await approveTx.wait();
-      setLoadingMsg("Step 2/2: Place your trade in wallet...");
-      const tradeTx=await arcanaContract.buyShares(m.id,isYes,usdcAmt);
-      setLoadingMsg("Confirming on Arc...");
-      const receipt=await tradeTx.wait();
-      if(receipt.status===0)throw new Error("Trade failed on-chain.");
-      setTxHash(tradeTx.hash);
-      const tradeRecord={marketId:m.id,market:m.title,side,amt,shares,payout,profit,txHash:tradeTx.hash};
-      onPositionAdded(tradeRecord);
-      onActivityAdded({...tradeRecord,time:new Date().toISOString().slice(0,16)});
-      setDone(true);
+      if(walletType==="circle"){
+        const usdcAmt=String(Math.round(parseFloat(amt)*1e6));
+        setLoadingMsg("Step 1/2: Approving USDC via Circle...");
+        const approveRes=await fetch("/api/execute-trade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({walletId,contractAddress:USDC_ADDRESS,abiFunctionSignature:"approve(address,uint256)",abiParameters:[CONTRACT_ADDRESS,usdcAmt]})});
+        const approveData=await approveRes.json();
+        if(!approveRes.ok)throw new Error(approveData.error||"Approval failed");
+        setLoadingMsg("Step 2/2: Placing trade via Circle...");
+        const tradeRes=await fetch("/api/execute-trade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({walletId,contractAddress:CONTRACT_ADDRESS,abiFunctionSignature:"buyShares(uint256,bool,uint256)",abiParameters:[String(m.id),String(isYes),usdcAmt]})});
+        const tradeData=await tradeRes.json();
+        if(!tradeRes.ok)throw new Error(tradeData.error||"Trade failed");
+        const hash=tradeData.txHash||"";
+        setTxHash(hash);
+        const tradeRecord={marketId:m.id,market:m.title,side,amt,shares,payout,profit,txHash:hash};
+        onPositionAdded(tradeRecord);
+        onActivityAdded({...tradeRecord,time:new Date().toISOString().slice(0,16)});
+        setDone(true);
+      }else{
+        setLoadingMsg("Switching to Arc Testnet...");
+        await switchToArc();
+        const provider=new ethers.providers.Web3Provider(window.ethereum);
+        const signer=provider.getSigner();
+        const usdcContract=new ethers.Contract(USDC_ADDRESS,USDC_ABI,signer);
+        const arcanaContract=new ethers.Contract(CONTRACT_ADDRESS,CONTRACT_ABI,signer);
+        const usdcAmt=ethers.utils.parseUnits(parseFloat(amt).toFixed(6),6);
+        setLoadingMsg("Step 1/2: Approve USDC spend in wallet...");
+        const approveTx=await usdcContract.approve(CONTRACT_ADDRESS,usdcAmt);
+        setLoadingMsg("Waiting for approval confirmation...");
+        await approveTx.wait();
+        setLoadingMsg("Step 2/2: Place your trade in wallet...");
+        const tradeTx=await arcanaContract.buyShares(m.id,isYes,usdcAmt);
+        setLoadingMsg("Confirming on Arc...");
+        const receipt=await tradeTx.wait();
+        if(receipt.status===0)throw new Error("Trade failed on-chain.");
+        setTxHash(tradeTx.hash);
+        const tradeRecord={marketId:m.id,market:m.title,side,amt,shares,payout,profit,txHash:tradeTx.hash};
+        onPositionAdded(tradeRecord);
+        onActivityAdded({...tradeRecord,time:new Date().toISOString().slice(0,16)});
+        setDone(true);
+      }
     }catch(err){
       if(err.code===4001||err.message?.includes("rejected"))setError("Transaction cancelled.");
       else setError(err.message||"Transaction failed. Please try again.");
@@ -1154,6 +1172,8 @@ export default function ArcanaMarkets(){
   const [active,setActive]=useState(null);
   const [tradeSide,setTradeSide]=useState(null);
   const [account,setAccount]=useState(null);
+  const [walletType,setWalletType]=useState(()=>LS.get("arcana_wallet_type",null));
+  const [circleWalletId,setCircleWalletId]=useState(()=>LS.get("arcana_circle_wallet_id",null));
   const [usdcBalance,setUsdcBalance]=useState("0.00");
   const [positions,setPositions]=useState([]);
   const [newTrades,setNewTrades]=useState(()=>LS.get("arcana_new_trades",[]));
@@ -1225,7 +1245,9 @@ export default function ArcanaMarkets(){
   const disconnectWallet=()=>{
     LS.set("arcana_user_disconnected",true);
     LS.set("arcana_last_wallet",null);
-    setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);if(window.ethereum){window.ethereum.request({method:"wallet_revokePermissions",params:[{eth_accounts:{}}]}).catch(()=>{});}
+    LS.set("arcana_wallet_type",null);
+    LS.set("arcana_circle_wallet_id",null);
+    setAccount(null);setWalletType(null);setCircleWalletId(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);if(window.ethereum){window.ethereum.request({method:"wallet_revokePermissions",params:[{eth_accounts:{}}]}).catch(()=>{});}
   };
 
   useEffect(()=>{
@@ -1388,7 +1410,7 @@ export default function ArcanaMarkets(){
     </>)}
   </div>
 ):(
-              <WalletModal t={t} account={account} onConnected={(addr) => { setAccount(addr); LS.set("arcana_last_wallet", addr); refreshBal(addr); loadWalletData(addr); checkOwner(addr); }} onDisconnected={disconnectWallet} />
+              <WalletModal t={t} account={account} onConnected={(addr,type,wid)=>{ setAccount(addr); setWalletType(type||"evm"); setCircleWalletId(wid||null); LS.set("arcana_last_wallet",addr); LS.set("arcana_wallet_type",type||"evm"); if(wid)LS.set("arcana_circle_wallet_id",wid); refreshBal(addr); loadWalletData(addr); checkOwner(addr); }} onDisconnected={disconnectWallet} />
                
                       )}
           </div>
@@ -1567,6 +1589,8 @@ export default function ArcanaMarkets(){
           usdcBalance={usdcBalance}
           onPositionAdded={addPosition}
           onActivityAdded={addActivity}
+          walletType={walletType}
+          walletId={circleWalletId}
         />
       )}
     </div>

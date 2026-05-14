@@ -70,7 +70,7 @@ module.exports = async function handler(req, res) {
     const wsRes = await fetch("https://api.circle.com/v1/w3s/developer/walletSets", {
       method: "POST",
       headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), entitySecretCipherText: cipherText1, name: "Arcana Markets" })
+      body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), entitySecretCiphertext: cipherText1, name: "Arcana Markets" })
     });
     const wsData = await wsRes.json();
     const walletSetId = wsData?.data?.walletSet?.id;
@@ -82,7 +82,7 @@ module.exports = async function handler(req, res) {
       headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         idempotencyKey: crypto.randomUUID(),
-        entitySecretCipherText: cipherText2,
+        entitySecretCiphertext: cipherText2,
         walletSetId,
         blockchains: ["ARC-TESTNET"],
         count: 1,

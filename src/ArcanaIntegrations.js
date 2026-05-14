@@ -32,6 +32,7 @@ export function useCircleWallet() {
   const [circleToken, setCircleToken]     = useState("");
   const [circleError, setCircleError]     = useState("");
   const [circleStep, setCircleStep]       = useState("idle");
+  const [circleWalletId, setCircleWalletId] = useState(null);
 
   const sendOtp = useCallback(async (email) => {
     setCircleLoading(true);
@@ -67,9 +68,10 @@ export function useCircleWallet() {
       const saved = localStorage.getItem(storageKey);
       const walletAddress = saved || data.walletAddress;
       if (!saved && data.walletAddress) localStorage.setItem(storageKey, data.walletAddress);
+      setCircleWalletId(data.walletId || null);
       setCircleAddress(walletAddress);
       setCircleStep("connected");
-      return walletAddress;
+      return { address: walletAddress, walletId: data.walletId || null };
     } catch (e) {
       setCircleError(e.message || "Verification failed");
       return null;
@@ -80,6 +82,7 @@ export function useCircleWallet() {
 
   const disconnectCircle = useCallback(() => {
     setCircleAddress(null);
+    setCircleWalletId(null);
     setCircleStep("idle");
     setCircleEmail("");
     setCircleOtp("");
@@ -88,7 +91,7 @@ export function useCircleWallet() {
   }, []);
 
   return {
-    circleAddress, circleLoading, circleEmail, setCircleEmail,
+    circleAddress, circleWalletId, circleLoading, circleEmail, setCircleEmail,
     circleOtp, setCircleOtp, circleToken,
     circleError, circleStep, setCircleStep, sendOtp, verifyOtp, disconnectCircle,
   };
@@ -104,7 +107,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   const dropdownRef                   = useRef(null);
 
   const {
-    circleAddress, circleLoading, circleEmail, setCircleEmail,
+    circleAddress, circleWalletId, circleLoading, circleEmail, setCircleEmail,
     circleOtp, setCircleOtp, circleToken,
     circleError, circleStep, sendOtp, verifyOtp, disconnectCircle,
   } = useCircleWallet();
@@ -151,7 +154,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
           });
         }
       }
-      onConnected(accounts[0]);
+      onConnected(accounts[0], "evm", null);
       setOpen(false);
     } catch (e) {
       if (e.code !== 4001) setEvmError(e.message?.slice(0, 80) || "Connection failed");
@@ -251,9 +254,9 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
                     <p style={{ color:"rgba(255,255,255,0.7)", fontSize:11, fontFamily:"monospace", margin:"0 0 8px" }}>Code sent to {circleEmail}</p>
                     <div style={{ display:"flex", gap:8 }}>
                       <input type="text" placeholder="6-digit code" value={circleOtp} onChange={e => setCircleOtp(e.target.value)}
-                        onKeyDown={e => e.key === "Enter" && verifyOtp(circleEmail, circleOtp, circleToken).then(addr => { if (addr) { onConnected(addr); setOpen(false); } })}
+                        onKeyDown={e => e.key === "Enter" && verifyOtp(circleEmail, circleOtp, circleToken).then(result => { if (result) { onConnected(result.address, "circle", result.walletId); setOpen(false); } })}
                         style={{ flex:1, background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, outline:"none", letterSpacing:4, fontFamily:"monospace" }} />
-                      <button onClick={() => verifyOtp(circleEmail, circleOtp, circleToken).then(addr => { if (addr) { onConnected(addr); setOpen(false); } })}
+                      <button onClick={() => verifyOtp(circleEmail, circleOtp, circleToken).then(result => { if (result) { onConnected(result.address, "circle", result.walletId); setOpen(false); } })}
                         disabled={circleLoading || !circleOtp}
                         style={{ padding:"9px 16px", background:"#fff", color:"#1d4ed8", border:"none", borderRadius:8, fontWeight:800, fontSize:13, cursor:circleLoading?"not-allowed":"pointer" }}>
                         {circleLoading ? "⏳" : "Verify →"}
@@ -486,7 +489,7 @@ export function UnifiedBalancePanel({ t, account }) {
   );
 }
 
-export function ERC8183JobPanel({ t, account, marketId, marketTitle, marketEndTime }) {
+export function ERC8183JobPanel({ t, account, marketId, marketTitle, marketEndTime, walletType, walletId }) {
   const [step, setStep]           = useState("idle");
   const [jobId, setJobId]         = useState(null);
   const [budget, setBudget]       = useState("");
@@ -508,33 +511,58 @@ export function ERC8183JobPanel({ t, account, marketId, marketTitle, marketEndTi
     return provider.getSigner();
   };
 
+  const executeViaCircle = async (contractAddress, abiFunctionSignature, abiParameters) => {
+    const res = await fetch("/api/execute-trade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ walletId, contractAddress, abiFunctionSignature, abiParameters }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Transaction failed");
+    return data.txHash;
+  };
+
   const createJob = async () => {
     if (!account) { setStatus("error"); setStatusMsg("Connect your wallet first"); return; }
     if (!budget || parseFloat(budget) < 0.01) { setStatus("error"); setStatusMsg("Set a budget (min 0.01 USDC)"); return; }
     setLoading(true); setStatus(null);
+    const expiredAt = marketEndTime || Math.floor(Date.now() / 1000) + 86400;
+    const description = `Arcana Markets: ${marketTitle || `Market #${marketId}`}`;
     try {
-      const ethers = getEthers();
-      const signer = await getSigner();
-      const contract = new ethers.Contract(ERC8183_CONTRACT, ERC8183_ABI, signer);
-      setStatusMsg("Creating job on Arc Testnet...");
-      const expiredAt = marketEndTime || Math.floor(Date.now() / 1000) + 86400;
-      const description = `Arcana Markets: ${marketTitle || `Market #${marketId}`}`;
-      const tx = await contract.createJob(account, account, expiredAt, description, "0x0000000000000000000000000000000000000000");
-      setStatusMsg("Waiting for confirmation...");
-      const receipt = await tx.wait();
-      let parsedJobId = null;
-      for (const log of receipt.logs) {
-        try {
-          const iface = new ethers.utils.Interface(ERC8183_ABI);
-          const parsed = iface.parseLog(log);
-          if (parsed.name === "JobCreated") { parsedJobId = parsed.args.jobId.toNumber(); break; }
-        } catch {}
+      if (walletType === "circle") {
+        setStatusMsg("Creating job via Circle...");
+        const txHash = await executeViaCircle(
+          ERC8183_CONTRACT,
+          "createJob(address,address,uint256,string,address)",
+          [account, account, String(expiredAt), description, "0x0000000000000000000000000000000000000000"]
+        );
+        setJobId(`M${marketId}`);
+        setTxHash(txHash || "");
+        setStep("created");
+        setStatus("success");
+        setStatusMsg(`Job created · Now fund the escrow`);
+      } else {
+        const ethers = getEthers();
+        const signer = await getSigner();
+        const contract = new ethers.Contract(ERC8183_CONTRACT, ERC8183_ABI, signer);
+        setStatusMsg("Creating job on Arc Testnet...");
+        const tx = await contract.createJob(account, account, expiredAt, description, "0x0000000000000000000000000000000000000000");
+        setStatusMsg("Waiting for confirmation...");
+        const receipt = await tx.wait();
+        let parsedJobId = null;
+        for (const log of receipt.logs) {
+          try {
+            const iface = new ethers.utils.Interface(ERC8183_ABI);
+            const parsed = iface.parseLog(log);
+            if (parsed.name === "JobCreated") { parsedJobId = parsed.args.jobId.toNumber(); break; }
+          } catch {}
+        }
+        setJobId(parsedJobId || `M${marketId}`);
+        setTxHash(tx.hash);
+        setStep("created");
+        setStatus("success");
+        setStatusMsg(`Job #${parsedJobId} created · Now fund the escrow`);
       }
-      setJobId(parsedJobId || `M${marketId}`);
-      setTxHash(tx.hash);
-      setStep("created");
-      setStatus("success");
-      setStatusMsg(`Job #${parsedJobId} created · Now fund the escrow`);
     } catch (e) {
       setStatus("error");
       setStatusMsg(e.code === 4001 ? "Cancelled" : e.reason || e.message?.slice(0, 80) || "Failed");
@@ -546,24 +574,38 @@ export function ERC8183JobPanel({ t, account, marketId, marketTitle, marketEndTi
     if (!jobId) return;
     setLoading(true); setStatus(null);
     try {
-      const ethers = getEthers();
-      const signer = await getSigner();
-      const usdc = new ethers.Contract(USDC_ADDRESS, USDC_ABI_FULL, signer);
-      const contract = new ethers.Contract(ERC8183_CONTRACT, ERC8183_ABI, signer);
-      const budgetWei = ethers.utils.parseUnits(parseFloat(budget).toFixed(6), 6);
-      setStatusMsg("Setting budget...");
-      const setBudgetTx = await contract.setBudget(jobId, budgetWei, "0x");
-      await setBudgetTx.wait();
-      setStatusMsg("Approving USDC spend...");
-      const approveTx = await usdc.approve(ERC8183_CONTRACT, budgetWei);
-      await approveTx.wait();
-      setStatusMsg("Funding escrow...");
-      const fundTx = await contract.fund(jobId, "0x");
-      await fundTx.wait();
-      setTxHash(fundTx.hash);
-      setStep("funded");
-      setStatus("success");
-      setStatusMsg(`Escrow funded with ${budget} USDC · Awaiting resolution`);
+      if (walletType === "circle") {
+        const budgetWei = String(Math.round(parseFloat(budget) * 1e6));
+        setStatusMsg("Setting budget...");
+        await executeViaCircle(ERC8183_CONTRACT, "setBudget(uint256,uint256,bytes)", [String(jobId), budgetWei, "0x"]);
+        setStatusMsg("Approving USDC spend...");
+        await executeViaCircle(USDC_ADDRESS, "approve(address,uint256)", [ERC8183_CONTRACT, budgetWei]);
+        setStatusMsg("Funding escrow...");
+        const txHash = await executeViaCircle(ERC8183_CONTRACT, "fund(uint256,bytes)", [String(jobId), "0x"]);
+        setTxHash(txHash || "");
+        setStep("funded");
+        setStatus("success");
+        setStatusMsg(`Escrow funded with ${budget} USDC · Awaiting resolution`);
+      } else {
+        const ethers = getEthers();
+        const signer = await getSigner();
+        const usdc = new ethers.Contract(USDC_ADDRESS, USDC_ABI_FULL, signer);
+        const contract = new ethers.Contract(ERC8183_CONTRACT, ERC8183_ABI, signer);
+        const budgetWei = ethers.utils.parseUnits(parseFloat(budget).toFixed(6), 6);
+        setStatusMsg("Setting budget...");
+        const setBudgetTx = await contract.setBudget(jobId, budgetWei, "0x");
+        await setBudgetTx.wait();
+        setStatusMsg("Approving USDC spend...");
+        const approveTx = await usdc.approve(ERC8183_CONTRACT, budgetWei);
+        await approveTx.wait();
+        setStatusMsg("Funding escrow...");
+        const fundTx = await contract.fund(jobId, "0x");
+        await fundTx.wait();
+        setTxHash(fundTx.hash);
+        setStep("funded");
+        setStatus("success");
+        setStatusMsg(`Escrow funded with ${budget} USDC · Awaiting resolution`);
+      }
     } catch (e) {
       setStatus("error");
       setStatusMsg(e.code === 4001 ? "Cancelled" : e.reason || e.message?.slice(0, 80) || "Failed");
@@ -576,20 +618,31 @@ export function ERC8183JobPanel({ t, account, marketId, marketTitle, marketEndTi
     setLoading(true); setStatus(null);
     try {
       const ethers = getEthers();
-      const signer = await getSigner();
-      const contract = new ethers.Contract(ERC8183_CONTRACT, ERC8183_ABI, signer);
       const deliverableHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(`market-${marketId}-outcome-${yesWon ? "yes" : "no"}`));
-      setStatusMsg("Submitting outcome hash...");
-      const submitTx = await contract.submit(jobId, deliverableHash, "0x");
-      await submitTx.wait();
       const reasonHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(yesWon ? "yes-won" : "no-won"));
-      setStatusMsg("Completing job and releasing USDC...");
-      const completeTx = await contract.complete(jobId, reasonHash, "0x");
-      await completeTx.wait();
-      setTxHash(completeTx.hash);
-      setStep("complete");
-      setStatus("success");
-      setStatusMsg(`Job #${jobId} complete · ${yesWon ? "YES" : "NO"} won · USDC released`);
+      if (walletType === "circle") {
+        setStatusMsg("Submitting outcome hash...");
+        await executeViaCircle(ERC8183_CONTRACT, "submit(uint256,bytes32,bytes)", [String(jobId), deliverableHash, "0x"]);
+        setStatusMsg("Completing job and releasing USDC...");
+        const txHash = await executeViaCircle(ERC8183_CONTRACT, "complete(uint256,bytes32,bytes)", [String(jobId), reasonHash, "0x"]);
+        setTxHash(txHash || "");
+        setStep("complete");
+        setStatus("success");
+        setStatusMsg(`Job #${jobId} complete · ${yesWon ? "YES" : "NO"} won · USDC released`);
+      } else {
+        const signer = await getSigner();
+        const contract = new ethers.Contract(ERC8183_CONTRACT, ERC8183_ABI, signer);
+        setStatusMsg("Submitting outcome hash...");
+        const submitTx = await contract.submit(jobId, deliverableHash, "0x");
+        await submitTx.wait();
+        setStatusMsg("Completing job and releasing USDC...");
+        const completeTx = await contract.complete(jobId, reasonHash, "0x");
+        await completeTx.wait();
+        setTxHash(completeTx.hash);
+        setStep("complete");
+        setStatus("success");
+        setStatusMsg(`Job #${jobId} complete · ${yesWon ? "YES" : "NO"} won · USDC released`);
+      }
     } catch (e) {
       setStatus("error");
       setStatusMsg(e.code === 4001 ? "Cancelled" : e.reason || e.message?.slice(0, 80) || "Failed");
