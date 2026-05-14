@@ -105,7 +105,6 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
     circleError, circleStep, sendOtp, verifyOtp, disconnectCircle,
   } = useCircleWallet();
 
-  // Close connect modal on outside click
   useEffect(() => {
     const handler = (e) => {
       if (open && modalRef.current && !modalRef.current.contains(e.target)) setOpen(false);
@@ -114,7 +113,6 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
       if (dropdownOpen && dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -137,7 +135,6 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
     setEvmLoading(walletId);
     setEvmError("");
     try {
-      await window.ethereum.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] });
       const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
       if (!accounts?.length) throw new Error("No accounts returned");
       try {
