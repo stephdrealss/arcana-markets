@@ -63,9 +63,13 @@ export function useCircleWallet() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid code");
-      setCircleAddress(data.walletAddress);
+      const storageKey = `arcana_circle_${email.toLowerCase().replace(/\W/g,"_")}`;
+      const saved = localStorage.getItem(storageKey);
+      const walletAddress = saved || data.walletAddress;
+      if (!saved && data.walletAddress) localStorage.setItem(storageKey, data.walletAddress);
+      setCircleAddress(walletAddress);
       setCircleStep("connected");
-      return data.walletAddress;
+      return walletAddress;
     } catch (e) {
       setCircleError(e.message || "Verification failed");
       return null;
