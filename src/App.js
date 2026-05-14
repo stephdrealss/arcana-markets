@@ -93,6 +93,8 @@ async function getContractOwner() {
 }
 
 // ── RESOLUTION STORE ──────────────────────────────────────────────────────────
+// Contract emits MarketResolved(marketId, yesWon) but doesn't expose yesWon as a getter.
+// We store it locally after admin resolves. In a future version this reads from event logs.
 const RES_KEY = "arcana_resolutions_v2";
 function getResolutions() { return LS.get(RES_KEY, {}); }
 function saveResolution(marketId, yesWon) {
@@ -848,12 +850,15 @@ function Activity({t,account,newTrades=[]}){
   const allActivity=React.useMemo(()=>{
     const seen=new Set();
     const merged=[];
+    // 1. session trades (newest, yours)
     for(const tr of (newTrades||[])){
       if(tr.txHash&&!seen.has(tr.txHash)){seen.add(tr.txHash);merged.push(tr);}
     }
+    // 2. live chain trades
     for(const tr of liveTrades){
       if(tr.txHash&&!seen.has(tr.txHash)){seen.add(tr.txHash);merged.push(tr);}
     }
+    // 3. seed — ALWAYS included, never skipped
     for(const tr of ACTIVITY_SEED){
       if(tr.txHash&&!seen.has(tr.txHash)){seen.add(tr.txHash);merged.push(tr);}
     }
@@ -1082,4 +1087,440 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
               {loading&&<div style={{background:t.blueDim,border:`1px solid ${t.blueBorder}`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:t.blue,fontFamily:"monospace"}}>⏳ {loadingMsg}</div>}
               <div style={{display:"flex",background:t.bg,borderRadius:10,padding:4,marginBottom:14}}>
                 {["YES","NO"].map(s=>(
-                  <button key={s} onClick={()=>setSide(s)} style={{flex:1,padding:"8px",borderRadius:8,border:"none",background:side===s?(s==="YES"?t.green:t.red
+                  <button key={s} onClick={()=>setSide(s)} style={{flex:1,padding:"8px",borderRadius:8,border:"none",background:side===s?(s==="YES"?t.green:t.red):"transparent",color:side===s?"#fff":t.textMuted,fontWeight:700,cursor:"pointer",fontSize:13,transition:"all 0.15s"}}>{s}</button>
+                ))}
+              </div>
+              <div style={{marginBottom:14}}>
+                <label style={{fontSize:11,color:t.textMuted,fontFamily:"monospace",letterSpacing:1,display:"block",marginBottom:6}}>AMOUNT</label>
+                <div style={{display:"flex",alignItems:"center",background:t.bg,border:`1.5px solid ${t.border}`,borderRadius:10}}>
+                  <span style={{padding:"12px 12px",color:t.textMuted,fontFamily:"monospace",fontSize:13}}>$</span>
+                  <input type="number" value={amt} onChange={e=>setAmt(e.target.value)} style={{flex:1,background:"none",border:"none",outline:"none",color:t.text,fontSize:16,fontFamily:"monospace",fontWeight:700,padding:"12px 0"}}/>
+                  <span style={{padding:"12px 14px",color:t.textMuted,fontFamily:"monospace",fontSize:12}}>USDC</span>
+                </div>
+                <div style={{display:"flex",gap:6,marginTop:8}}>
+                  {["0.01","0.1","1","10","50"].map(v=>(
+                    <button key={v} onClick={()=>setAmt(v)} style={{flex:1,padding:"6px 0",background:amt===v?t.blue:t.bg,border:`1px solid ${amt===v?t.blue:t.border}`,borderRadius:6,color:amt===v?"#fff":t.textMuted,fontSize:11,cursor:"pointer",fontFamily:"monospace"}}>${v}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{background:t.bg,border:`1px solid ${t.border}`,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
+                {[["Avg price",`${cents}¢`],["Shares",shares],["Potential payout",`$${payout}`],["Potential profit",`+$${profit}`]].map(([k,v])=>(
+                  <div key={k} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                    <span style={{fontSize:12,color:t.textMuted,fontFamily:"monospace"}}>{k}</span>
+                    <span style={{fontSize:12,color:t.text,fontFamily:"monospace",fontWeight:700}}>{v}</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={placeOrder} disabled={loading}
+                style={{width:"100%",padding:"14px",background:t.blue,color:"#fff",border:"none",borderRadius:10,fontWeight:800,fontSize:14,cursor:loading?"not-allowed":"pointer",opacity:loading?0.7:1,fontFamily:"monospace",letterSpacing:0.5}}>
+                {loading?`⏳ PROCESSING...`:`PLACE ${side} ORDER ON ARC`}
+              </button>
+              <p style={{textAlign:"center",fontSize:11,color:t.textLight,fontFamily:"monospace",marginTop:10}}>Trades settle on Arc Testnet · USDC</p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MAIN APP ──────────────────────────────────────────────────────────────────
+export default function ArcanaMarkets(){
+  const [dark,setDark]=useState(()=>LS.get("arcana_theme",false));
+  const [page,setPage]=useState("Markets");
+  const [cat,setCat]=useState("All");
+  const [q,setQ]=useState("");
+  const [active,setActive]=useState(null);
+  const [tradeSide,setTradeSide]=useState(null);
+  const [account,setAccount]=useState(null);
+  const [usdcBalance,setUsdcBalance]=useState("0.00");
+  const [positions,setPositions]=useState([]);
+  const [newTrades,setNewTrades]=useState(()=>LS.get("arcana_new_trades",[]));
+  const [livePrices,setLivePrices]=useState({});
+  const [tickIdx,setTickIdx]=useState(0);
+  const [resolutions,setResolutions]=useState(()=>getResolutions());
+  const [isOwner,setIsOwner]=useState(false);
+  const [stats,setStats]=useState(()=>buildStats([]));
+
+  const t=dark?THEMES.dark:THEMES.light;
+  const toggleTheme=()=>{const n=!dark;setDark(n);LS.set("arcana_theme",n);};
+
+  const refreshBal=async(addr)=>{setUsdcBalance(await getUsdcBalance(addr));};
+
+  // Check if connected wallet is contract owner
+  const checkOwner=useCallback(async(addr)=>{
+    if(!addr){setIsOwner(false);return;}
+    const owner=await getContractOwner();
+    setIsOwner(owner&&owner.toLowerCase()===addr.toLowerCase());
+  },[]);
+
+  const loadWalletData=useCallback(async(addr)=>{
+    if(!addr)return;
+    const key=addr.toLowerCase();
+    const local=LS.get(`arcana_positions_${key}`,[]);
+    // Merge seed trades
+    const seedTrades=getWalletHistory(addr);
+    const localHashes=new Set(local.map(p=>p.txHash));
+    const seedPositions=seedTrades.filter(s=>!localHashes.has(s.txHash)).map(s=>({
+      marketId:parseInt((Object.keys(MC).find(k=>MC[k]===s.market)||"M0").replace("M","")),
+      market:s.market,side:s.side,amt:s.amt,txHash:s.txHash,time:s.time
+    }));
+    const merged=[...local,...seedPositions];
+    setPositions(merged);
+    if(seedPositions.length>0)LS.set(`arcana_positions_${key}`,merged);
+    // Also fetch live from chain
+    try{
+      const live=await fetchWalletLiveHistory(addr);
+      if(live&&live.length>0){
+        const mergedHashes=new Set(merged.map(p=>p.txHash));
+        const newLive=live.filter(l=>!mergedHashes.has(l.txHash));
+        if(newLive.length>0){
+          const final=[...newLive,...merged];
+          setPositions(final);
+          LS.set(`arcana_positions_${key}`,final);
+        }
+      }
+    }catch{}
+  },[]);
+
+  const connectWallet=async()=>{
+    const provider=window.ethereum;
+    if(!provider){alert("No EVM wallet found! Install MetaMask or any EVM wallet.");return;}
+    try{
+      LS.set("arcana_user_disconnected",false);
+      try{await provider.request({method:"wallet_requestPermissions",params:[{eth_accounts:{}}]});}
+      catch(e){if(e.code===4001)return;}
+      const accounts=await provider.request({method:"eth_requestAccounts"});
+      if(!accounts?.length)return;
+      const addr=accounts[0];
+      setAccount(addr);
+      LS.set("arcana_last_wallet",addr);
+      await refreshBal(addr);
+      loadWalletData(addr);
+      checkOwner(addr);
+    }catch(e){if(e.code!==4001)console.error(e);}
+  };
+
+  const disconnectWallet=()=>{
+    LS.set("arcana_user_disconnected",true);
+    LS.set("arcana_last_wallet",null);
+    setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);
+  };
+
+  useEffect(()=>{
+    const userDisconnected=LS.get("arcana_user_disconnected",false);
+    const lastWallet=LS.get("arcana_last_wallet",null);
+    if(!userDisconnected&&lastWallet&&window.ethereum){
+      window.ethereum.request({method:"eth_accounts"}).then(accs=>{
+        const still=accs.find(a=>a.toLowerCase()===lastWallet.toLowerCase());
+        if(still){setAccount(still);refreshBal(still);loadWalletData(still);checkOwner(still);}
+        else LS.set("arcana_last_wallet",null);
+      }).catch(()=>{});
+    }
+    if(window.ethereum){
+      const h=(accs)=>{
+        const addr=accs[0]||null;
+        if(addr){LS.set("arcana_user_disconnected",false);LS.set("arcana_last_wallet",addr);setAccount(addr);refreshBal(addr);loadWalletData(addr);checkOwner(addr);}
+        else{LS.set("arcana_last_wallet",null);setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);}
+      };
+      window.ethereum.on("accountsChanged",h);
+      return()=>window.ethereum.removeListener("accountsChanged",h);
+    }
+  },[]);
+
+  useEffect(()=>{
+    const fetchPrices=async()=>{
+      try{
+        const res=await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true");
+        const data=await res.json();
+        setLivePrices({bitcoin:{price:data.bitcoin?.usd,change:data.bitcoin?.usd_24h_change},ethereum:{price:data.ethereum?.usd,change:data.ethereum?.usd_24h_change},solana:{price:data.solana?.usd,change:data.solana?.usd_24h_change}});
+      }catch{}
+    };
+    fetchPrices();
+    const iv=setInterval(fetchPrices,30000);
+    return()=>clearInterval(iv);
+  },[]);
+
+  // Live stats refresh every 60s
+  useEffect(()=>{
+    const refresh=async()=>{
+      const live=await fetchLiveStats();
+      setStats(buildStats(live,LS.get("arcana_new_trades",[])));
+    };
+    refresh();
+    const iv=setInterval(refresh,60000);
+    return()=>clearInterval(iv);
+  },[]);
+
+  useEffect(()=>{
+    const timer=setInterval(()=>setTickIdx(i=>(i+1)%ALL_MARKETS.length),3500);
+    return()=>clearInterval(timer);
+  },[]);
+
+  const addPosition=useCallback((trade)=>{
+    if(!account)return;
+    const key=account.toLowerCase();
+    setPositions(prev=>{
+      const next=[trade,...prev];
+      LS.set(`arcana_positions_${key}`,next);
+      return next;
+    });
+  },[account]);
+
+  const addActivity=useCallback((trade)=>{
+    if(!account)return;
+    const entry={from:account,shortAddr:`${account.slice(0,6)}...${account.slice(-4)}`,txHash:trade.txHash,time:new Date().toISOString().slice(0,16),market:trade.market,side:trade.side,usdc:parseFloat(trade.amt)||0};
+    setNewTrades(prev=>{
+      const next=[entry,...prev];
+      LS.set("arcana_new_trades",next);
+      fetchLiveStats().then(live=>setStats(buildStats(live,next)));
+      return next;
+    });
+  },[account]);
+
+  const refreshResolutions=()=>setResolutions(getResolutions());
+
+  const filtered=ALL_MARKETS.filter(m=>cat==="Trending"?m.trending:cat==="All"?true:m.cat===cat).filter(m=>!q||m.title.toLowerCase().includes(q.toLowerCase()));
+  const tick=ALL_MARKETS[tickIdx];
+
+  const NAV_TABS=["Markets","Portfolio",...(isOwner?["Admin"]:[]),"Leaderboard","Activity"];
+
+  return(
+    <div style={{minHeight:"100vh",background:t.bg,color:t.text,fontFamily:"'DM Sans',system-ui,sans-serif"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        .card{transition:all 0.18s;}
+        @media(max-width:640px){
+          .nav-links{display:none!important;}
+          .hero-stats{flex-direction:column!important;}
+          .top-movers{grid-template-columns:1fr 1fr!important;}
+          .markets-grid{grid-template-columns:1fr!important;}
+          .filter-row{flex-direction:column!important;}
+          .nav-right{gap:6px!important;}
+          .usdc-badge{display:none!important;}
+        }
+        @media(max-width:480px){
+          .hero-title{font-size:28px!important;}
+          .top-movers{grid-template-columns:1fr!important;}
+        }
+      `}</style>
+
+      {/* NAV */}
+      <nav style={{position:"sticky",top:0,zIndex:100,background:t.navBg,backdropFilter:"blur(12px)",borderBottom:`1px solid ${t.border}`}}>
+        <div style={{maxWidth:1380,margin:"0 auto",padding:"0 20px",display:"flex",alignItems:"center",gap:16,height:56}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,cursor:"pointer"}} onClick={()=>setPage("Markets")}>
+            <div style={{width:32,height:32,borderRadius:10,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <rect x="4" y="4" width="16" height="16" rx="1" transform="rotate(45 12 12)" stroke="white" strokeWidth="2.5" fill="none"/>
+                <rect x="7" y="7" width="10" height="10" rx="0.5" transform="rotate(45 12 12)" fill="white"/>
+              </svg>
+            </div>
+            <span style={{fontSize:17,fontWeight:800,letterSpacing:-0.5,color:t.text}}>arcana</span>
+            <span style={{fontSize:9,background:t.blueDim,color:t.blue,border:`1px solid ${t.blueBorder}`,padding:"2px 6px",borderRadius:4,fontFamily:"monospace",fontWeight:700}}>TESTNET</span>
+          </div>
+          <div className="nav-links" style={{display:"flex",gap:1,overflowX:"auto",flex:1}}>
+            {NAV_TABS.map(n=>(
+              <button key={n} onClick={()=>{setPage(n);if(n==="Admin")refreshResolutions();}}
+                style={{padding:"6px 14px",background:page===n?t.blueDim:"none",border:"none",borderRadius:8,color:page===n?t.blue:n==="Admin"?t.purple:t.textMuted,fontSize:13,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
+                {n}{n==="Portfolio"&&positions.length>0?` (${positions.length})`:""}
+              </button>
+            ))}
+          </div>
+          <div className="nav-right" style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+            {account&&<div className="usdc-badge" style={{padding:"6px 12px",background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:8,fontSize:12,color:t.green,fontFamily:"monospace",fontWeight:700}}>${usdcBalance} USDC</div>}
+            <button onClick={toggleTheme} style={{position:"relative",width:52,height:28,borderRadius:14,background:dark?"#4F8EF7":"#E5E7EB",border:"none",cursor:"pointer",transition:"background 0.3s",padding:0,flexShrink:0}}>
+              <div style={{position:"absolute",top:3,left:dark?26:3,width:22,height:22,borderRadius:"50%",background:"#fff",transition:"left 0.3s",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>
+                {dark?"🌙":"☀️"}
+              </div>
+            </button>
+            {account?(
+              <button onClick={disconnectWallet} style={{padding:"7px 16px",background:t.blue,color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"monospace"}}>
+                ◈ {account.slice(0,6)}...{account.slice(-4)} ✕
+              </button>
+            ):(
+              <button onClick={connectWallet} style={{padding:"7px 16px",background:t.blue,color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                Connect Wallet
+              </button>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* TICKER */}
+      <div style={{background:t.tickerBg,padding:"7px 20px"}}>
+        <div style={{maxWidth:1380,margin:"0 auto",display:"flex",alignItems:"center",gap:20,overflowX:"auto"}}>
+          <span style={{fontSize:10,fontFamily:"monospace",color:t.tickerText,letterSpacing:2,flexShrink:0,opacity:0.6}}>LIVE</span>
+          {["bitcoin","ethereum","solana"].map(coin=>{
+            const data=livePrices[coin];
+            const sym=coin==="bitcoin"?"BTC":coin==="ethereum"?"ETH":"SOL";
+            const up=(data?.change||0)>=0;
+            return(
+              <span key={coin} style={{fontSize:11,fontFamily:"monospace",color:t.tickerText,flexShrink:0,opacity:0.9}}>
+                {sym} {data?`$${data.price?.toLocaleString()}`:"—"} <span style={{color:up?"#4ade80":"#f87171"}}>{data?`${up?"+":""}${data.change?.toFixed(2)}%`:""}</span>
+              </span>
+            );
+          })}
+          <span style={{fontSize:10,fontFamily:"monospace",color:"rgba(255,255,255,0.4)",margin:"0 4px"}}>·</span>
+          <span style={{fontSize:11,fontFamily:"monospace",color:t.tickerText,opacity:0.7,flexShrink:0}}>
+            {tick?.title.slice(0,40)}… <span style={{color:"#4ade80"}}>{pct(tick?.yes)}%</span>
+          </span>
+        </div>
+      </div>
+
+      <div style={{maxWidth:1380,margin:"0 auto",padding:"0 20px 60px"}}>
+
+        {page==="Admin"&&(
+          isOwner
+            ?<AdminPanel t={t} account={account} onResolved={refreshResolutions}/>
+            :<div style={{textAlign:"center",padding:"80px 20px"}}>
+              <div style={{fontSize:48,marginBottom:16}}>🚫</div>
+              <p style={{color:t.textMuted,fontSize:15}}>Owner wallet required to access this panel</p>
+            </div>
+        )}
+
+        {page==="Portfolio"&&(
+          <Portfolio t={t} account={account} positions={positions} resolutions={resolutions}/>
+        )}
+
+        {page==="Leaderboard"&&(
+          <Leaderboard t={t} account={account} newTrades={newTrades}/>
+        )}
+
+        {page==="Activity"&&(
+          <Activity t={t} account={account} newTrades={newTrades}/>
+        )}
+
+        {page==="Markets"&&(
+          <>
+            <div style={{padding:"44px 0 32px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:32,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:280}}>
+                <div style={{display:"inline-flex",alignItems:"center",gap:6,background:t.blueDim,border:`1px solid ${t.blueBorder}`,borderRadius:6,padding:"4px 10px",marginBottom:16}}>
+                  <span style={{fontSize:10,fontWeight:700,fontFamily:"monospace",letterSpacing:1}}><span style={{color:t.green}}>●</span><span style={{color:t.blue}}> ARC TESTNET · LIVE</span></span>
+                </div>
+                <h1 style={{fontSize:"clamp(36px,6vw,72px)",fontWeight:800,letterSpacing:-2,color:t.text,lineHeight:1.05,marginBottom:12}}>
+                  Arcana Markets
+                </h1>
+                <p style={{fontSize:18,fontWeight:800,color:t.text,marginBottom:8,lineHeight:1.2,letterSpacing:-0.3}}>
+                  Predict. Trade. Win USDC.
+                </p>
+                <p style={{fontSize:14,color:t.textMuted,lineHeight:1.6}}>
+                  {ALL_MARKETS.length} prediction markets. Trade YES or NO with USDC on Arc's EVM testnet.
+                </p>
+              </div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-start"}} className="hero-stats">
+                {[[stats.totalVolume,"Total Volume"],[stats.openMarkets,"Open Markets"],[stats.traderCount,"Traders"]].map(([v,l])=>(
+                  <div key={l} style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"20px 28px",minWidth:130,textAlign:"center"}}>
+                    <div style={{fontSize:28,fontWeight:800,fontFamily:"monospace",color:t.blue,marginBottom:6,letterSpacing:-1}}>{v}</div>
+                    <div style={{fontSize:12,color:t.textMuted,fontFamily:"monospace",letterSpacing:0.5}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{marginBottom:32}}>
+              <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:12}}>TOP MOVERS</div>
+              <div className="top-movers" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+                {TOP_MOVERS.map(m=>{
+                  const up=m.chg>=0;
+                  return(
+                    <div key={m.id} onClick={()=>{setActive(m);setTradeSide(null);}}
+                      style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:10,transition:"all 0.15s"}}
+                      onMouseEnter={e=>e.currentTarget.style.borderColor=t.blue}
+                      onMouseLeave={e=>e.currentTarget.style.borderColor=t.border}>
+                      <div style={{flex:1}}>
+                        <p style={{fontSize:12,color:t.text,fontWeight:600,margin:"0 0 4px",lineHeight:1.3}}>{m.title.slice(0,30)}…</p>
+                        <span style={{fontSize:11,fontFamily:"monospace",color:t.textMuted}}>{pct(m.yes)}%</span>
+                      </div>
+                      <span style={{fontSize:13,fontWeight:700,fontFamily:"monospace",color:up?t.green:t.red}}>{up?"+":""}{Math.round(m.chg*100)}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"center",flexWrap:"wrap"}} className="filter-row">
+              <div style={{display:"flex",gap:5,flex:1,flexWrap:"wrap"}}>
+                {CATS.map(c=>(
+                  <button key={c} onClick={()=>setCat(c)}
+                    style={{padding:"6px 13px",background:cat===c?t.blue:t.surface,border:`1px solid ${cat===c?t.blue:t.border}`,borderRadius:20,color:cat===c?"#fff":t.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{c}</button>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:8,flexShrink:0}}>
+                <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search..."
+                  style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:"7px 12px",color:t.text,fontSize:13,outline:"none",width:160}}/>
+              </div>
+            </div>
+
+            <div style={{marginBottom:16,fontSize:12,color:t.textMuted,fontFamily:"monospace"}}>{filtered.length} markets</div>
+
+            <div className="markets-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:16}}>
+              {filtered.map(m=>{
+                const outcome=resolutions[String(m.id)];
+                const isResolved=outcome!==undefined;
+                // isCancelled: we'd need an on-chain read per card to know;
+                // for now we show cancelled state only in Portfolio where we do fetch on-chain
+                return(
+                  <div key={m.id} className="card">
+                    <GridCard m={m}
+                      onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);}}
+                      t={t}
+                      resolvedOutcome={outcome}
+                      isResolved={isResolved}
+                      isCancelled={false}
+                      livePrice={
+                        m.cat==="Crypto"&&m.title.includes("BTC")&&livePrices.bitcoin?`BTC $${livePrices.bitcoin.price?.toLocaleString()}`:
+                        m.cat==="Crypto"&&m.title.includes("ETH")&&livePrices.ethereum?`ETH $${livePrices.ethereum.price?.toLocaleString()}`:
+                        m.cat==="Crypto"&&m.title.includes("SOL")&&livePrices.solana?`SOL $${livePrices.solana.price?.toLocaleString()}`:
+                        null
+                      }
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            {filtered.length===0&&<div style={{textAlign:"center",padding:"60px 0",color:t.textMuted}}>No markets found</div>}
+
+            <div style={{marginTop:52,background:t.navy,borderRadius:16,padding:"30px 34px",display:"flex",gap:24,alignItems:"center",flexWrap:"wrap"}}>
+              <div style={{width:48,height:48,borderRadius:14,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                  <rect x="4" y="4" width="16" height="16" rx="1" transform="rotate(45 12 12)" stroke="white" strokeWidth="2.5" fill="none"/>
+                  <rect x="7" y="7" width="10" height="10" rx="0.5" transform="rotate(45 12 12)" fill="white"/>
+                </svg>
+              </div>
+              <div style={{flex:1}}>
+                <h3 style={{fontSize:17,fontWeight:700,marginBottom:5,color:"#fff"}}>Powered by Arc Network</h3>
+                <p style={{fontSize:13,color:"rgba(255,255,255,0.5)",lineHeight:1.6}}>Every prediction trade settles on-chain with real USDC.</p>
+              </div>
+              <div style={{display:"flex",gap:28,flexWrap:"wrap"}}>
+                {[["0x3600...0000","USDC"],["0x4cef52","Chain ID"],["< 1s","Finality"],["USDC","Gas Token"]].map(([v,l])=>(
+                  <div key={l} style={{textAlign:"center"}}>
+                    <div style={{fontSize:12,fontFamily:"monospace",color:"#fff",fontWeight:700}}>{v}</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontFamily:"monospace"}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      <footer style={{borderTop:`1px solid ${t.border}`,padding:20,textAlign:"center",background:t.bg}}>
+        <p style={{fontSize:11,fontFamily:"monospace",color:t.textLight}}>✦ ARCANA.MARKETS · ARC TESTNET · {CONTRACT_ADDRESS.slice(0,10)}…</p>
+      </footer>
+
+      {active&&(
+        <TradeModal
+          m={active}
+          initSide={tradeSide}
+          onClose={()=>{setActive(null);setTradeSide(null);}}
+          t={t}
+          account={account}
+          usdcBalance={usdcBalance}
+          onPositionAdded={addPosition}
+          onActivityAdded={addActivity}
+        />
+      )}
+    </div>
+  );
+}
