@@ -70,7 +70,7 @@ module.exports = async function handler(req, res) {
   try {
     const txId = await executeCircleTx(walletId, contractAddress, abiFunctionSignature, abiParameters);
     const result = await waitForTx(txId);
-    return res.status(200).join({ success: true, txHash: result.txHash });
+    return res.status(200).json({ success: true, txHash: result.txHash });
   } catch (e) {
     console.error("execute-trade error:", e.message);
     return res.status(400).json({ error: e.message || "Transaction failed" });
