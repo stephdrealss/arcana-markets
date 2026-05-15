@@ -133,7 +133,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   const EVM_WALLETS = [
     { id: "metamask",     label: "MetaMask",       icon: "🦊" },
     { id: "coinbase",     label: "Coinbase Wallet", icon: "🔵" },
-    { id: "walletconnect",label: "WalletConnect",   icon: "🔗" },
+    { id: "walletconnect", label: "WalletConnect", icon: <img src="https://avatars.githubusercontent.com/u/37784886" width="20" height="20" style={{borderRadius:4}} /> },
     { id: "injected",     label: "Browser Wallet",  icon: "🌐" },
   ];
 
