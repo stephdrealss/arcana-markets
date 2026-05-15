@@ -323,7 +323,7 @@ export function BridgePanel({ t, account }) {
   const SUPPORTED_CHAINS = [
     {id:"Ethereum_Sepolia",label:"Ethereum",icon:<svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><path d="M16 6.4v7.2L21.6 16 16 6.4z" fill="white" fillOpacity="0.6"/><path d="M16 6.4L10.4 16 16 13.6V6.4z" fill="white"/><path d="M16 20.8v4.8L21.6 17.6 16 20.8z" fill="white" fillOpacity="0.6"/><path d="M16 25.6v-4.8L10.4 17.6 16 25.6z" fill="white"/></svg>},
     {id:"Base_Sepolia",label:"Base",icon:<svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#0052FF"/><path d="M16 6C10.477 6 6 10.477 6 16s4.477 10 10 10c5.254 0 9.564-4.055 9.966-9.2H15.2v-1.6h10.8C25.564 10.455 21.254 6 16 6z" fill="white"/></svg>},
-    {id:"Arbitrum_Sepolia",label:"Arbitrum",icon:<svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#213147"/><path d="M16 7L9 11.5v9L16 25l7-4.5v-9L16 7z" fill="#12AAFF"/><path d="M13 18l3-5 3 5-3 2-3-2z" fill="white"/></svg>},
+    {id:"Arbitrum_Sepolia",label:"Arbitrum",icon:<img src="https://avatars.githubusercontent.com/u/84478841?s=200&v=4" width="20" height="20" style={{borderRadius:"50%"}}/>},
     {id:"Solana_Devnet",label:"Solana",icon:<svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#9945FF"/><path d="M9 20h14l-3 3H9l3-3zm0-5.5h11l-3 3H9l3-3zM12 9h11l-3 3H9l3-3z" fill="white"/></svg>},
   ];
 
