@@ -213,7 +213,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   return (
     <>
       <button onClick={() => setOpen(true)} style={{ padding:"7px 16px", background:t.blue, color:"#fff", border:"none", borderRadius:8, fontSize:13, fontWeight:700, cursor:"pointer" }}>
-        Connect Wallet
+        Log In
       </button>
 
       {open && (
