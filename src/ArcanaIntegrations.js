@@ -230,7 +230,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
             <div style={{ padding:"16px 24px 24px" }}>
               <div style={{ background:"linear-gradient(135deg,#1d4ed8 0%,#2563eb 50%,#1e40af 100%)", borderRadius:14, padding:"18px 20px", marginBottom:16, border:"1.5px solid rgba(255,255,255,0.1)" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-                  <div style={{ width:36, height:36, borderRadius:10, background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden" }}><img src="https://www.circle.com/hubfs/images.assets.streamlinehq.com/images/logos/circle-financial.svg" width="36" height="36" style={{borderRadius:10}} /></div>
+                  <div style={{ width:36, height:36, borderRadius:10, background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden" }}><img src="https://www.circle.com/hubfs/circle-logomark-dark.svg" width="36" height="36" style={{borderRadius:10}} /></div>
                   <div>
                     <p style={{ color:"#fff", fontWeight:800, fontSize:14, margin:0 }}>Circle Wallet</p>
                     <p style={{ color:"rgba(255,255,255,0.6)", fontSize:11, margin:0, fontFamily:"monospace" }}>Email + OTP · No seed phrase needed</p>
