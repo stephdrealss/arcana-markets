@@ -131,8 +131,8 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   }, [dropdownOpen]);
 
   const EVM_WALLETS = [
-    { id: "metamask",     label: "MetaMask",       icon: "🦊" },
-    { id: "coinbase",     label: "Coinbase Wallet", icon: "🔵" },
+    { id: "metamask",     label: "MetaMask",       icon: <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" width="20" height="20" /> },
+    { id: "coinbase",     label: "Coinbase Wallet", icon: <img src="https://avatars.githubusercontent.com/u/18060234" width="20" height="20" style={{borderRadius:4}} /> },
     { id: "walletconnect", label: "WalletConnect", icon: <img src="https://avatars.githubusercontent.com/u/37784886" width="20" height="20" style={{borderRadius:4}} /> },
     { id: "injected",     label: "Browser Wallet",  icon: "🌐" },
   ];
@@ -230,7 +230,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
             <div style={{ padding:"16px 24px 24px" }}>
               <div style={{ background:"linear-gradient(135deg,#1d4ed8 0%,#2563eb 50%,#1e40af 100%)", borderRadius:14, padding:"18px 20px", marginBottom:16, border:"1.5px solid rgba(255,255,255,0.1)" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-                  <div style={{ width:36, height:36, borderRadius:10, background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>⬡</div>
+                  <div style={{ width:36, height:36, borderRadius:10, background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden" }}><img src="https://avatars.githubusercontent.com/u/43503750" width="36" height="36" style={{borderRadius:10}} /></div>
                   <div>
                     <p style={{ color:"#fff", fontWeight:800, fontSize:14, margin:0 }}>Circle Wallet</p>
                     <p style={{ color:"rgba(255,255,255,0.6)", fontSize:11, margin:0, fontFamily:"monospace" }}>Email + OTP · No seed phrase needed</p>
