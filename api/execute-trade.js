@@ -16,7 +16,6 @@ async function getEntitySecretCipherText() {
   return encrypted.toString('base64');
 }
 
-
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -46,7 +45,7 @@ module.exports = async function handler(req, res) {
       contractAddress,
       abiFunctionSignature,
       abiParameters: (abiParameters || []).map(String),
-      gasLimit: "300000", maxFee: "1", priorityFee: "1",
+      feeLevel: "LOW",
     };
     console.log("Sending to Circle:", JSON.stringify({ ...circleBody, entitySecretCiphertext: "[redacted]" }));
 
