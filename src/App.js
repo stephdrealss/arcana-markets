@@ -1154,7 +1154,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                 style={{width:"100%",padding:"14px",background:t.blue,color:"#fff",border:"none",borderRadius:10,fontWeight:800,fontSize:14,cursor:loading?"not-allowed":"pointer",opacity:loading?0.7:1,fontFamily:"monospace",letterSpacing:0.5}}>
                 {loading?`⏳ PROCESSING...`:`PLACE ${side} ORDER ON ARC`}
               </button>
-              <p style={{textAlign:"center",fontSize:11,color:t.textLight,fontFamily:"monospace",marginTop:10}}>Trades settle on Arc Testnet · USDC</p> <ERC8183JobPanel t={t} account={account} marketId={m.id} marketTitle={m.title} marketEndTime={Math.floor(new Date(m.ends+" 2026").getTime()/1000)} walletType={walletType} walletId={circleWalletId}/>
+              <p style={{textAlign:"center",fontSize:11,color:t.textLight,fontFamily:"monospace",marginTop:10}}>Trades settle on Arc Testnet · USDC</p> <ERC8183JobPanel t={t} account={account} marketId={m.id} marketTitle={m.title} marketEndTime={Math.floor(new Date(m.ends+" 2026").getTime()/1000)} walletType={walletType} walletId={walletId}/>
             </>
           )}
         </div>
