@@ -46,7 +46,7 @@ module.exports = async function handler(req, res) {
       contractAddress,
       abiFunctionSignature,
       abiParameters: (abiParameters || []).map(String),
-      feeLevel: "LOW",
+      gasLimit: "300000", maxFee: "1", priorityFee: "1",
     };
     console.log("Sending to Circle:", JSON.stringify({ ...circleBody, entitySecretCiphertext: "[redacted]" }));
 
