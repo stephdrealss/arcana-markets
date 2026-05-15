@@ -57,7 +57,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({ userId })
     });
 
-    const walletsRes = await fetch(`https://api.circle.com/v1/w3s/wallets?userId=${userId}`, {
+    const walletsRes = await fetch(`https://api.circle.com/v1/w3s/wallets?refId=${encodeURIComponent(userId)}&blockchain=ARC-TESTNET&pageSize=10`, {
       headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}` }
     });
     const walletsData = await walletsRes.json();
