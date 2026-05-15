@@ -1,5 +1,4 @@
 const crypto = require('crypto');
-
 const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY;
 const ENTITY_SECRET = process.env.CIRCLE_ENTITY_SECRET;
 
@@ -16,6 +15,46 @@ async function getEntitySecretCipherText() {
   return encrypted.toString('base64');
 }
 
+async function executeCircleTx(walletId, contractAddress, abiFunctionSignature, abiParameters) {
+  const cipherText = await getEntitySecretCipherText();
+  const body = {
+    idempotencyKey: crypto.randomUUID(),
+    entitySecretCiphertext: cipherText,
+    walletId,
+    contractAddress,
+    abiFunctionSignature,
+    abiParameters: (abiParameters || []).map(String),
+    feeLevel: "LOW",
+  };
+  const res = await fetch("https://api.circle.com/v1/w3s/developer/transactions/contractExecution", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.message || "Circle API error");
+  return data?.data?.id;
+}
+
+async function waitForTx(txId, maxWait = 30000) {
+  const start = Date.now();
+  while (Date.now() - start < maxWait) {
+    await new Promise(r => setTimeout(r, 2000));
+    const res = await fetch(`https://api.circle.com/v1/w3s/transactions/${txId}`, {
+      headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}` }
+    });
+    const data = await res.json();
+    const state = data?.data?.transaction?.state;
+    const txHash = data?.data?.transaction?.txHash;
+    if (state === "COMPLETE") return { success: true, txHash };
+    if (state === "FAILED") {
+      const reason = data?.data?.transaction?.errorDetails || "Transaction failed";
+      throw new Error(reason);
+    }
+  }
+  throw new Error("Transaction timed out");
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -25,51 +64,15 @@ module.exports = async function handler(req, res) {
 
   const { walletId, contractAddress, abiFunctionSignature, abiParameters } = req.body;
   if (!walletId || !contractAddress || !abiFunctionSignature) {
-    return res.status(400).json({ error: "Missing required fields", got: { walletId: !!walletId, contractAddress: !!contractAddress, abiFunctionSignature: !!abiFunctionSignature } });
+    return res.status(400).json({ error: "Missing required fields" });
   }
 
   try {
-    const [cipherText, balRes] = await Promise.all([
-      getEntitySecretCipherText(),
-      fetch(`https://api.circle.com/v1/w3s/wallets/${walletId}/balances`, {
-        headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}` }
-      })
-    ]);
-    const balData = await balRes.json();
-    console.log("Circle wallet balances:", JSON.stringify(balData));
-
-    const circleBody = {
-      idempotencyKey: crypto.randomUUID(),
-      entitySecretCiphertext: cipherText,
-      walletId,
-      contractAddress,
-      abiFunctionSignature,
-      abiParameters: (abiParameters || []).map(String),
-      feeLevel: "LOW",
-    };
-    console.log("Sending to Circle:", JSON.stringify({ ...circleBody, entitySecretCiphertext: "[redacted]" }));
-
-    const result = await fetch("https://api.circle.com/v1/w3s/developer/transactions/contractExecution", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${CIRCLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify(circleBody)
-    });
-    const data = await result.json();
-    console.log("Circle response:", JSON.stringify(data));
-
-    if (!result.ok) {
-      return res.status(result.status).json({
-        error: data?.message || "Circle API error",
-        code: data?.code,
-        errors: data?.errors,
-        circleError: data,
-        walletBalances: balData?.data?.tokenBalances || balData
-      });
-    }
-    const txHash = data?.data?.transaction?.txHash || data?.data?.id || null;
-    return res.status(200).json({ success: true, txHash, raw: data });
+    const txId = await executeCircleTx(walletId, contractAddress, abiFunctionSignature, abiParameters);
+    const result = await waitForTx(txId);
+    return res.status(200).join({ success: true, txHash: result.txHash });
   } catch (e) {
-    console.error("execute-trade error:", e.message, e.stack);
-    return res.status(500).json({ error: e.message || "Transaction failed" });
+    console.error("execute-trade error:", e.message);
+    return res.status(400).json({ error: e.message || "Transaction failed" });
   }
 };
