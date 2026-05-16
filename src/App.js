@@ -1324,7 +1324,7 @@ export default function ArcanaMarkets(){
 
   const refreshResolutions=()=>setResolutions(getResolutions());
 
-  const filtered=ALL_MARKETS.filter(m=>cat==="Trending"?m.trending:cat==="All"?true:m.cat===cat).filter(m=>!q||m.title.toLowerCase().includes(q.toLowerCase()));
+  const now=new Date(); const filtered=ALL_MARKETS.filter(m=>{const hasYear=/20\d\d/.test(m.ends||"");const endDate=new Date(hasYear?m.ends:(m.ends||"")+" 2026");return isNaN(endDate.getTime())||endDate>now;}).filter(m=>cat==="Trending"?m.trending:cat==="All"?true:m.cat===cat).filter(m=>!q||m.title.toLowerCase().includes(q.toLowerCase()));
   const tick=ALL_MARKETS[tickIdx];
 
   const NAV_TABS=["Markets","Portfolio",...(isOwner?["Admin"]:[]),"Leaderboard","Activity"];
