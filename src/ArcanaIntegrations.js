@@ -323,7 +323,7 @@ export function BridgePanel({ t, account }) {
   const SUPPORTED_CHAINS = [
     {id:"Ethereum_Sepolia",label:"Ethereum",icon:<img src="https://assets.coingecko.com/coins/images/279/small/ethereum.png" width="20" height="20" style={{borderRadius:"50%"}}/>},
     {id:"Base_Sepolia",label:"Base",icon:<svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#0052FF"/><path d="M16 6C10.477 6 6 10.477 6 16s4.477 10 10 10c5.254 0 9.564-4.055 9.966-9.2H15.2v-1.6h10.8C25.564 10.455 21.254 6 16 6z" fill="white"/></svg>},
-    {id:"Arbitrum_Sepolia",label:"Arbitrum",icon:<img src="https://assets.coingecko.com/coins/images/16547/small/photo_2023-03-29_21.47.00.jpeg" width="20" height="20" style={{borderRadius:"50%"}}/>},
+    https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/arbitrum/info/logo.png
     {id:"Solana_Devnet",label:"Solana",icon:<img src="https://assets.coingecko.com/coins/images/4128/small/solana.png" width="20" height="20" style={{borderRadius:"50%"}}/>},
   ];
 
