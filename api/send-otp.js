@@ -35,7 +35,7 @@ module.exports = async function handler(req, res) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Arcana Markets <onboarding@resend.dev>",
+        from: "Arcana Markets <noreply@arcanamarkets.xyz>",
         to: [email],
         subject: "Your Arcana Markets verification code",
         html: `
