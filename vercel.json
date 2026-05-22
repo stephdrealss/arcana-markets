@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/execute-trade.js": {
+      "maxDuration": 60
+    },
+    "api/bridge-cctp.js": {
+      "maxDuration": 60
+    }
+  }
+}
