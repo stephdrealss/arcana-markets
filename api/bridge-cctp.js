@@ -1,128 +1,46 @@
+const { initiateDeveloperControlledWalletsClient } = require('@circle-fin/developer-controlled-wallets');
+const { BridgeKit } = require('@circle-fin/bridge-kit');
+const { CircleWalletsAdapter } = require('@circle-fin/adapter-circle-wallets');
 const crypto = require('crypto');
 
 const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY;
 const ENTITY_SECRET = process.env.CIRCLE_ENTITY_SECRET;
 
-// CCTP Domain IDs
 const CHAIN_CONFIG = {
-  'ETH-SEPOLIA': { domain: 0, blockchain: 'ETH-SEPOLIA', name: 'Ethereum Sepolia' },
-  'BASE-SEPOLIA': { domain: 6, blockchain: 'BASE-SEPOLIA', name: 'Base Sepolia' },
-  'ARB-SEPOLIA': { domain: 3, blockchain: 'ARB-SEPOLIA', name: 'Arbitrum Sepolia' },
-  'AVAX-FUJI': { domain: 1, blockchain: 'AVAX-FUJI', name: 'Avalanche Fuji' },
+  'ETH-SEPOLIA': { blockchain: 'ETH-SEPOLIA', bridgeChain: 'Ethereum_Sepolia', name: 'Ethereum Sepolia' },
+  'BASE-SEPOLIA': { blockchain: 'BASE-SEPOLIA', bridgeChain: 'Base_Sepolia', name: 'Base Sepolia' },
+  'AVAX-FUJI': { blockchain: 'AVAX-FUJI', bridgeChain: 'Avalanche_Fuji', name: 'Avalanche Fuji' },
 };
 
-const ARC_DOMAIN = 26;
-const ARC_BLOCKCHAIN = 'ARC-TESTNET';
-
-async function getEntitySecretCipherText() {
-  const res = await fetch('https://api.circle.com/v1/w3s/config/entity/publicKey', {
-    headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` }
+async function getOrCreateSourceWallet(client, userId, blockchain) {
+  // Check for existing wallet on this blockchain
+  const existing = await client.listWallets({
+    refId: userId,
+    blockchain,
+    pageSize: 10,
   });
-  const data = await res.json();
-  const publicKey = data.data.publicKey;
-  const encrypted = crypto.publicEncrypt(
-    { key: publicKey, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
-    Buffer.from(ENTITY_SECRET, 'hex')
-  );
-  return encrypted.toString('base64');
-}
+  const wallet = existing?.data?.wallets?.[0];
+  if (wallet?.address) return wallet;
 
-async function getOrCreateWallet(userId, blockchain) {
-  // Check existing wallets on this blockchain
-  const res = await fetch(
-    `https://api.circle.com/v1/w3s/wallets?refId=${encodeURIComponent(userId)}&blockchain=${blockchain}&pageSize=10`,
-    { headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` } }
-  );
-  const data = await res.json();
-  const existing = data?.data?.wallets?.[0];
-  if (existing?.address) return existing;
-
-  // Create new wallet on this blockchain
-  const cipherText1 = await getEntitySecretCipherText();
-  const wsRes = await fetch('https://api.circle.com/v1/w3s/developer/walletSets', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      idempotencyKey: crypto.randomUUID(),
-      entitySecretCiphertext: cipherText1,
-      name: `Arcana Bridge - ${blockchain}`
-    })
-  });
-  const wsData = await wsRes.json();
-  const walletSetId = wsData?.data?.walletSet?.id;
-  if (!walletSetId) throw new Error('Failed to create wallet set: ' + JSON.stringify(wsData));
-
-  const cipherText2 = await getEntitySecretCipherText();
-  const walletRes = await fetch('https://api.circle.com/v1/w3s/developer/wallets', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      idempotencyKey: crypto.randomUUID(),
-      entitySecretCiphertext: cipherText2,
-      walletSetId,
-      blockchains: [blockchain],
-      count: 1,
-      metadata: [{ name: `Arcana-Bridge-${blockchain}`, refId: userId }]
-    })
-  });
-  const walletData = await walletRes.json();
-  const wallet = walletData?.data?.wallets?.[0];
-  if (!wallet?.address) throw new Error('Failed to create wallet: ' + JSON.stringify(walletData));
-  return wallet;
-}
-
-async function executeCircleTx(walletId, contractAddress, abiFunctionSignature, abiParameters) {
-  const cipherText = await getEntitySecretCipherText();
-  const body = {
+  // Create wallet set
+  const wsRes = await client.createWalletSet({
     idempotencyKey: crypto.randomUUID(),
-    entitySecretCiphertext: cipherText,
-    walletId,
-    contractAddress,
-    abiFunctionSignature,
-    abiParameters: (abiParameters || []).map(String),
-    feeLevel: 'LOW',
-  };
-  const res = await fetch('https://api.circle.com/v1/w3s/developer/transactions/contractExecution', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    name: `Arcana Bridge - ${blockchain}`,
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || 'Circle API error');
-  return data?.data?.id;
-}
+  const walletSetId = wsRes?.data?.walletSet?.id;
+  if (!walletSetId) throw new Error('Failed to create wallet set');
 
-async function waitForTx(txId, maxWait = 60000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWait) {
-    await new Promise(r => setTimeout(r, 3000));
-    const res = await fetch(`https://api.circle.com/v1/w3s/transactions/${txId}`, {
-      headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` }
-    });
-    const data = await res.json();
-    const state = data?.data?.transaction?.state;
-    const txHash = data?.data?.transaction?.txHash;
-    if (state === 'COMPLETE') return { success: true, txHash };
-    if (state === 'FAILED') throw new Error(data?.data?.transaction?.errorDetails || 'Transaction failed');
-  }
-  throw new Error('Transaction timed out');
-}
-
-async function pollAttestation(txHash, sourceDomain, maxWait = 120000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWait) {
-    await new Promise(r => setTimeout(r, 5000));
-    try {
-      const res = await fetch(
-        `https://iris-api-sandbox.circle.com/v2/messages/${sourceDomain}?transactionHash=${txHash}`
-      );
-      const data = await res.json();
-      const messages = data?.messages || [];
-      const ready = messages.find(m => m.status === 'complete');
-      if (ready) return { message: ready.message, attestation: ready.attestation };
-    } catch {}
-  }
-  throw new Error('Attestation timed out — USDC will arrive on Arc shortly');
+  // Create wallet
+  const walletRes = await client.createWallets({
+    idempotencyKey: crypto.randomUUID(),
+    walletSetId,
+    blockchains: [blockchain],
+    count: 1,
+    metadata: [{ name: `Arcana-Bridge-${blockchain}`, refId: userId }],
+  });
+  const newWallet = walletRes?.data?.wallets?.[0];
+  if (!newWallet?.address) throw new Error('Failed to create wallet');
+  return newWallet;
 }
 
 module.exports = async function handler(req, res) {
@@ -132,8 +50,8 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { userId, arcWalletId, sourceChain, amount } = req.body;
-  if (!userId || !arcWalletId || !sourceChain || !amount) {
+  const { userId, arcWalletId, arcAddress, sourceChain, amount } = req.body;
+  if (!userId || !arcWalletId || !arcAddress || !sourceChain || !amount) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
@@ -143,99 +61,69 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // Step 1 — Get or create source chain wallet
-    const sourceWallet = await getOrCreateWallet(userId, chainConfig.blockchain);
+    // Initialize Circle client
+    const client = initiateDeveloperControlledWalletsClient({
+      apiKey: CIRCLE_API_KEY,
+      entitySecret: ENTITY_SECRET,
+    });
+
+    // Get or create source chain wallet
+    const sourceWallet = await getOrCreateSourceWallet(client, userId, chainConfig.blockchain);
     const sourceWalletId = sourceWallet.id;
     const sourceAddress = sourceWallet.address;
 
-    // Step 2 — Check USDC balance on source chain
-    const balRes = await fetch(
-      `https://api.circle.com/v1/w3s/wallets/${sourceWalletId}/balances`,
-      { headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` } }
-    );
-    const balData = await balRes.json();
-    const balances = balData?.data?.tokenBalances || [];
+    // Check USDC balance on source chain
+    const balRes = await client.getWalletTokenBalance({ id: sourceWalletId });
+    const balances = balRes?.data?.tokenBalances || [];
     const usdcBalance = balances.find(b => b.token?.symbol === 'USDC');
-    const availableBalance = parseFloat(usdcBalance?.amount || '0');
-    const requestedAmount = parseFloat(amount);
+    const available = parseFloat(usdcBalance?.amount || '0');
+    const requested = parseFloat(amount);
 
-    if (availableBalance < requestedAmount) {
+    // If insufficient balance, return wallet address for funding
+    if (available < requested) {
       return res.status(200).json({
         step: 'fund_required',
         sourceAddress,
         sourceChain,
-        availableBalance,
-        requestedAmount,
-        message: `Fund your ${chainConfig.name} wallet with USDC first`,
-        faucetUrl: 'https://faucet.circle.com'
+        availableBalance: available,
+        requestedAmount: requested,
+        message: `Fund your ${chainConfig.name} wallet with at least ${requested} USDC`,
+        faucetUrl: 'https://faucet.circle.com',
       });
     }
 
-    // CCTP TokenMessengerV2 address (same on all testnets)
-    const TOKEN_MESSENGER = '0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA';
-    const USDC_AMOUNT = String(Math.round(requestedAmount * 1e6));
+    // Initialize Bridge Kit with Circle Wallets adapter
+    const adapter = new CircleWalletsAdapter({
+      apiKey: CIRCLE_API_KEY,
+      entitySecret: ENTITY_SECRET,
+    });
 
-    // Get Arc wallet address for minting destination
-    const arcWalletRes = await fetch(
-      `https://api.circle.com/v1/w3s/wallets/${arcWalletId}`,
-      { headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` } }
-    );
-    const arcWalletData = await arcWalletRes.json();
-    const arcAddress = arcWalletData?.data?.wallet?.address;
-    if (!arcAddress) throw new Error('Could not get Arc wallet address');
+    const kit = new BridgeKit({ adapter });
 
-    // Pad Arc address to bytes32 for CCTP
-    const mintRecipient = '0x' + arcAddress.slice(2).padStart(64, '0');
-
-    // Step 3 — Approve USDC spend on source chain
-    const USDC_ADDRESSES = {
-      'ETH-SEPOLIA': '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
-      'BASE-SEPOLIA': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-      'ARB-SEPOLIA': '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
-      'AVAX-FUJI': '0x5425890298aed601595a70AB815c96711a31Bc65',
-    };
-    const usdcAddress = USDC_ADDRESSES[sourceChain];
-
-    const approveTxId = await executeCircleTx(
-      sourceWalletId,
-      usdcAddress,
-      'approve(address,uint256)',
-      [TOKEN_MESSENGER, USDC_AMOUNT]
-    );
-    await waitForTx(approveTxId);
-
-    // Step 4 — Burn USDC via CCTP depositForBurn
-    const burnTxId = await executeCircleTx(
-      sourceWalletId,
-      TOKEN_MESSENGER,
-      'depositForBurn(uint256,uint32,bytes32,address,bytes,uint256,uint256)',
-      [USDC_AMOUNT, String(ARC_DOMAIN), mintRecipient, usdcAddress, '0x', '0', '0']
-    );
-    const burnResult = await waitForTx(burnTxId);
-    const burnTxHash = burnResult.txHash;
-
-    // Step 5 — Poll for attestation
-    let attestationResult = null;
-    try {
-      attestationResult = await pollAttestation(burnTxHash, chainConfig.domain);
-    } catch (e) {
-      // Attestation takes time — return burn hash so user knows it's in progress
-      return res.status(200).json({
-        step: 'pending_attestation',
-        burnTxHash,
-        sourceChain,
-        amount: requestedAmount,
-        message: 'USDC burned on source chain. Waiting for Circle attestation — USDC will arrive on Arc Testnet within 5-10 minutes.',
-      });
-    }
+    // Execute real CCTP bridge
+    const result = await kit.bridge({
+      from: {
+        chain: chainConfig.bridgeChain,
+        address: sourceAddress,
+        walletId: sourceWalletId,
+      },
+      to: {
+        chain: 'Arc_Testnet',
+        address: arcAddress,
+        walletId: arcWalletId,
+      },
+      amount: String(requested),
+    });
 
     return res.status(200).json({
       step: 'complete',
-      burnTxHash,
+      success: true,
       sourceChain,
-      amount: requestedAmount,
-      message: `${requestedAmount} USDC bridged to Arc Testnet successfully!`,
-      attestation: attestationResult?.attestation,
+      amount: requested,
+      sourceAddress,
+      txHash: result?.steps?.find(s => s.name === 'burn')?.txHash || '',
+      message: `${requested} USDC bridged from ${chainConfig.name} to Arc Testnet successfully!`,
+      result,
     });
 
   } catch (e) {
