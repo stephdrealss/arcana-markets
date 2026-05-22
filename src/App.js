@@ -1045,7 +1045,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
         setLoadingMsg("Step 1/2: Approving USDC via Circle...");
         const approveRes=await fetch("/api/execute-trade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({walletId,contractAddress:USDC_ADDRESS,abiFunctionSignature:"approve(address,uint256)",abiParameters:[CONTRACT_ADDRESS,usdcAmt]})});
         const approveData=await approveRes.json();
-        if(!approveRes.ok)throw new Error(approveData.error||"Approval failed");
+        if(!approveRes.ok)throw new Error(approveData.error||"Approval failed"); setLoadingMsg("Step 2/2: Placing trade via Circle..."); const tradeRes=await fetch("/api/execute-trade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({walletId,contractAddress:CONTRACT_ADDRESS,abiFunctionSignature:"buyShares(uint256,bool,uint256)",abiParameters:[String(m.id),String(isYes),usdcAmt]})}); const tradeData=await tradeRes.json(); if(!tradeRes.ok)throw new Error(tradeData.error||"Trade failed"); const hash=tradeData.txHash||""; await refreshBal(account);
         setLoadingMsg("Step 2/2: Placing trade via Circle...");
         const tradeRes=await fetch("/api/execute-trade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({walletId,contractAddress:CONTRACT_ADDRESS,abiFunctionSignature:"buyShares(uint256,bool,uint256)",abiParameters:[String(m.id),String(isYes),usdcAmt]})});
         const tradeData=await tradeRes.json();
