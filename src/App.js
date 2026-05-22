@@ -1050,7 +1050,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
         const tradeRes=await fetch("/api/execute-trade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({walletId,contractAddress:CONTRACT_ADDRESS,abiFunctionSignature:"buyShares(uint256,bool,uint256)",abiParameters:[String(m.id),String(isYes),usdcAmt]})});
         const tradeData=await tradeRes.json();
         if(!tradeRes.ok)throw new Error(tradeData.error||"Trade failed");
-        const hash=tradeData.txHash||""; await refreshBal(account);
+        const hash=tradeData.txHash||"";
         setTxHash(hash);
         const tradeRecord={marketId:m.id,market:m.title,side,amt,shares,payout,profit,txHash:hash};
         onPositionAdded(tradeRecord);
