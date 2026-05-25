@@ -154,7 +154,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       step: 'complete',
       success: true,
-      burnTxId,
+      burnTxHash: burnResult?.txHash || burnTxId,
       sourceChain,
       sourceAddress,
       amount: requested,
