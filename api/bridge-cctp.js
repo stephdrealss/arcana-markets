@@ -147,7 +147,7 @@ module.exports = async function handler(req, res) {
       sourceWalletId,
       TOKEN_MESSENGER_V2,
       'depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint256)',
-      [usdcAmount, String(ARC_DOMAIN), mintRecipient, usdcAddress]
+      [usdcAmount, String(ARC_DOMAIN), mintRecipient, usdcAddress, '0x0000000000000000000000000000000000000000000000000000000000000000', '0', '0']
     );
 
     const burnResult = await waitForTx(burnTxId);
