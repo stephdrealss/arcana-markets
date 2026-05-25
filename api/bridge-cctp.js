@@ -158,7 +158,7 @@ module.exports = async function handler(req, res) {
       sourceChain,
       sourceAddress,
       amount: requested,
-      message: `${requested} USDC is being bridged from ${chainConfig.name} to Arc Testnet! USDC will arrive in 5-10 minutes.`,
+      message: `${requested} USDC burned on ${chainConfig.name}! Arriving on Arc Testnet in 5-10 minutes.`,
     });
 
   } catch (e) {
