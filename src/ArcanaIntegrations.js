@@ -311,7 +311,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   );
 }
 
-export function BridgePanel({ t, account }) {
+export function BridgePanel({ t, account, walletType, walletId, arcAddress, userId }) {
   const [open, setOpen]           = useState(false);
   const [srcChain, setSrcChain]   = useState("Ethereum_Sepolia");
   const [amount, setAmount]       = useState("");
