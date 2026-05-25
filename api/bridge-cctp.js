@@ -150,7 +150,7 @@ module.exports = async function handler(req, res) {
       [usdcAmount, String(ARC_DOMAIN), mintRecipient, usdcAddress]
     );
 
-    // Return immediately — don't wait for burn confirmation
+    const burnResult = await waitForTx(burnTxId);
     return res.status(200).json({
       step: 'complete',
       success: true,
