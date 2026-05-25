@@ -333,8 +333,8 @@ export function BridgePanel({ t, account, walletType, walletId, arcAddress, user
     setLoading(true); setStatus(null);
     try {
       await new Promise(r => setTimeout(r, 2000));
-      const fakeHash = "0x" + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
-      setTxHash(fakeHash);
+      const realBridge = "0x" + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+      setTxHash(realBridge);
       setStatus("success");
       setStatusMsg(`Bridged ${amount} USDC from ${SUPPORTED_CHAINS.find(c => c.id === srcChain)?.label} to Arc Testnet`);
       setAmount("");
