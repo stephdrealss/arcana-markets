@@ -1,3 +1,5 @@
+const { createCircleWalletsAdapter } = require('@circle-fin/adapter-circle-wallets');
+const { AppKit } = require('@circle-fin/app-kit');
 const crypto = require('crypto');
 
 const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY;
@@ -9,19 +11,6 @@ const CHAIN_CONFIG = {
   'AVAX-FUJI': { blockchain: 'AVAX-FUJI', bridgeChain: 'Avalanche_Fuji', name: 'Avalanche Fuji' },
 };
 
-async function getEntitySecretCipherText() {
-  const res = await fetch('https://api.circle.com/v1/w3s/config/entity/publicKey', {
-    headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` }
-  });
-  const data = await res.json();
-  const publicKey = data.data.publicKey;
-  const encrypted = crypto.publicEncrypt(
-    { key: publicKey, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
-    Buffer.from(ENTITY_SECRET, 'hex')
-  );
-  return encrypted.toString('base64');
-}
-
 async function getOrCreateWallet(userId, blockchain) {
   const res = await fetch(
     `https://api.circle.com/v1/w3s/wallets?refId=${encodeURIComponent(userId)}&blockchain=${blockchain}&pageSize=10`,
@@ -31,7 +20,19 @@ async function getOrCreateWallet(userId, blockchain) {
   const existing = data?.data?.wallets?.[0];
   if (existing?.address) return existing;
 
-  const cipherText1 = await getEntitySecretCipherText();
+  // Create entity secret ciphertext
+  const pkRes = await fetch('https://api.circle.com/v1/w3s/config/entity/publicKey', {
+    headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` }
+  });
+  const pkData = await pkRes.json();
+  const publicKey = pkData.data.publicKey;
+  const crypto2 = require('crypto');
+  const encrypted = crypto2.publicEncrypt(
+    { key: publicKey, padding: crypto2.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
+    Buffer.from(ENTITY_SECRET, 'hex')
+  );
+  const cipherText1 = encrypted.toString('base64');
+
   const wsRes = await fetch('https://api.circle.com/v1/w3s/developer/walletSets', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}`, 'Content-Type': 'application/json' },
@@ -43,9 +44,18 @@ async function getOrCreateWallet(userId, blockchain) {
   });
   const wsData = await wsRes.json();
   const walletSetId = wsData?.data?.walletSet?.id;
-  if (!walletSetId) throw new Error('Failed to create wallet set: ' + JSON.stringify(wsData));
+  if (!walletSetId) throw new Error('Failed to create wallet set');
 
-  const cipherText2 = await getEntitySecretCipherText();
+  const pkRes2 = await fetch('https://api.circle.com/v1/w3s/config/entity/publicKey', {
+    headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` }
+  });
+  const pkData2 = await pkRes2.json();
+  const encrypted2 = crypto2.publicEncrypt(
+    { key: pkData2.data.publicKey, padding: crypto2.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
+    Buffer.from(ENTITY_SECRET, 'hex')
+  );
+  const cipherText2 = encrypted2.toString('base64');
+
   const walletRes = await fetch('https://api.circle.com/v1/w3s/developer/wallets', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}`, 'Content-Type': 'application/json' },
@@ -60,78 +70,9 @@ async function getOrCreateWallet(userId, blockchain) {
   });
   const walletData = await walletRes.json();
   const wallet = walletData?.data?.wallets?.[0];
-  if (!wallet?.address) throw new Error('Failed to create wallet: ' + JSON.stringify(walletData));
+  if (!wallet?.address) throw new Error('Failed to create wallet');
   return wallet;
 }
-
-async function executeTx(walletId, contractAddress, abiFunctionSignature, abiParameters) {
-  const cipherText = await getEntitySecretCipherText();
-  const body = {
-    idempotencyKey: crypto.randomUUID(),
-    entitySecretCiphertext: cipherText,
-    walletId,
-    contractAddress,
-    abiFunctionSignature,
-    abiParameters: (abiParameters || []).map(String),
-    feeLevel: 'LOW',
-  };
-  const res = await fetch('https://api.circle.com/v1/w3s/developer/transactions/contractExecution', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || 'Circle API error');
-  return data?.data?.id;
-}
-
-async function waitForTx(txId, maxWait = 60000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWait) {
-    await new Promise(r => setTimeout(r, 3000));
-    const res = await fetch(`https://api.circle.com/v1/w3s/transactions/${txId}`, {
-      headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` }
-    });
-    const data = await res.json();
-    const state = data?.data?.transaction?.state;
-    const txHash = data?.data?.transaction?.txHash;
-    if (state === 'COMPLETE') return { success: true, txHash };
-    if (state === 'FAILED') throw new Error(data?.data?.transaction?.errorDetails || 'Transaction failed');
-  }
-  throw new Error('Transaction timed out');
-}
-
-async function pollAttestation(txHash, sourceDomain, maxWait = 120000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWait) {
-    await new Promise(r => setTimeout(r, 5000));
-    try {
-      const res = await fetch(
-        `https://iris-api-sandbox.circle.com/v2/messages/${sourceDomain}?transactionHash=${txHash}`
-      );
-      const data = await res.json();
-      const messages = data?.messages || [];
-      const ready = messages.find(m => m.status === 'complete');
-      if (ready) return { message: ready.message, attestation: ready.attestation };
-    } catch {}
-  }
-  throw new Error('Attestation timed out');
-}
-
-const USDC_ADDRESSES = {
-  'ETH-SEPOLIA': '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
-  'BASE-SEPOLIA': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-  'AVAX-FUJI': '0x5425890298aed601595a70AB815c96711a31Bc65',
-};
-
-const CCTP_DOMAINS = {
-  'ETH-SEPOLIA': 0,
-  'BASE-SEPOLIA': 6,
-  'AVAX-FUJI': 1,
-};
-
-const TOKEN_MESSENGER = '0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA';
-const ARC_DOMAIN = 26;
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -149,12 +90,12 @@ module.exports = async function handler(req, res) {
   if (!chainConfig) return res.status(400).json({ error: 'Unsupported source chain' });
 
   try {
-    // Step 1 — Get or create source chain wallet
+    // Get or create source chain wallet
     const sourceWallet = await getOrCreateWallet(userId, chainConfig.blockchain);
     const sourceWalletId = sourceWallet.id;
     const sourceAddress = sourceWallet.address;
 
-    // Step 2 — Check balance
+    // Check balance
     const balRes = await fetch(
       `https://api.circle.com/v1/w3s/wallets/${sourceWalletId}/balances`,
       { headers: { 'Authorization': `Bearer ${CIRCLE_API_KEY}` } }
@@ -177,45 +118,43 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const usdcAddress = USDC_ADDRESSES[sourceChain];
-    const sourceDomain = CCTP_DOMAINS[sourceChain];
-    const usdcAmount = String(Math.round(requested * 1e6));
-    const mintRecipient = '0x' + arcAddress.slice(2).padStart(64, '0');
+    // Use Circle's official App Kit with Circle Wallets adapter
+    const adapter = createCircleWalletsAdapter({
+      apiKey: CIRCLE_API_KEY,
+      entitySecret: ENTITY_SECRET,
+    });
 
-    // Step 3 — Approve
-    const approveTxId = await executeTx(sourceWalletId, usdcAddress, 'approve(address,uint256)', [TOKEN_MESSENGER, usdcAmount]);
-    await waitForTx(approveTxId);
+    const kit = new AppKit();
 
-    // Step 4 — Burn via CCTP
-    const burnTxId = await executeTx(
-      sourceWalletId,
-      TOKEN_MESSENGER,
-      'depositForBurn(uint256,uint32,bytes32,address)',
-      [usdcAmount, String(ARC_DOMAIN), mintRecipient, usdcAddress]
-    );
-    const burnResult = await waitForTx(burnTxId);
-    const burnTxHash = burnResult.txHash;
+    const result = await kit.bridge({
+      from: {
+        adapter,
+        chain: chainConfig.bridgeChain,
+        address: sourceAddress,
+      },
+      to: {
+        adapter,
+        chain: 'Arc_Testnet',
+        address: arcAddress,
+      },
+      amount: String(requested),
+    });
 
-    // Step 5 — Poll attestation
-    try {
-      await pollAttestation(burnTxHash, sourceDomain);
-    } catch (e) {
-      return res.status(200).json({
-        step: 'pending_attestation',
-        burnTxHash,
-        sourceChain,
-        amount: requested,
-        message: 'USDC burned on source chain. Will arrive on Arc Testnet within 5-10 minutes.',
-      });
-    }
+    const burnStep = result?.steps?.find(s => s.name === 'burn');
+    const mintStep = result?.steps?.find(s => s.name === 'mint');
 
     return res.status(200).json({
       step: 'complete',
       success: true,
-      burnTxHash,
       sourceChain,
       amount: requested,
-      message: `${requested} USDC bridged to Arc Testnet successfully!`,
+      sourceAddress,
+      burnTxHash: burnStep?.txHash || '',
+      mintTxHash: mintStep?.txHash || '',
+      burnExplorerUrl: burnStep?.explorerUrl || '',
+      mintExplorerUrl: mintStep?.explorerUrl || '',
+      message: `${requested} USDC bridged from ${chainConfig.name} to Arc Testnet!`,
+      result,
     });
 
   } catch (e) {
