@@ -1,9 +1,6 @@
 {
   "functions": {
-    "api/execute-trade.js": {
-      "maxDuration": 60
-    },
-    "api/bridge-cctp.js": {
+    "api/*.js": {
       "maxDuration": 60
     }
   }
