@@ -136,7 +136,7 @@ module.exports = async function handler(req, res) {
 
     const usdcAddress = USDC_ADDRESSES[sourceChain];
     const usdcAmount = String(Math.round(requested * 1e6));
-    const mintRecipient = '0x' + arcAddress.slice(2).padStart(64, '0');
+    const mintRecipient = '0x000000000000000000000000' + arcAddress.slice(2).toLowerCase();
 
     // Step 3 — Approve USDC
     const approveTxId = await executeTx(sourceWalletId, usdcAddress, 'approve(address,uint256)', [TOKEN_MESSENGER_V2, usdcAmount]);
