@@ -332,12 +332,20 @@ export function BridgePanel({ t, account, walletType, walletId, arcAddress, user
     if (!amount || parseFloat(amount) < 0.01) { setStatus("error"); setStatusMsg("Minimum 0.01 USDC"); return; }
     setLoading(true); setStatus(null);
     try {
-      const sourceChain = srcChain === "Ethereum_Sepolia" ? "ETH-SEPOLIA" : srcChain === "Base_Sepolia" ? "BASE-SEPOLIA" : "AVAX-FUJI";       const res = await fetch("/api/bridge-cctp", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,arcWalletId:walletId,arcAddress,sourceChain,amount})});       const data = await res.json();       if(data.step==="fund_required"){setStatus("error");setStatusMsg(`Fund your source wallet at faucet.circle.com — Address: ${data.sourceAddress}`);}       else if(data.step==="pending_attestation"||data.step==="complete"||data.success){setTxHash(data.burnTxHash||"");setStatus("success");setStatusMsg(data.message||`${amount} USDC bridged to Arc!`);setAmount("");}       else{throw new Error(data.error||"Bridge failed");}
-      const realBridge = "0x" + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
-      setTxHash(realBridge);
-      setStatus("success");
-      setStatusMsg(`Bridged ${amount} USDC from ${SUPPORTED_CHAINS.find(c => c.id === srcChain)?.label} to Arc Testnet`);
-      setAmount("");
+      const sourceChain = srcChain === "Ethereum_Sepolia" ? "ETH-SEPOLIA" : srcChain === "Base_Sepolia" ? "BASE-SEPOLIA" : "AVAX-FUJI";
+      const res = await fetch("/api/bridge-cctp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, arcWalletId: walletId, arcAddress, sourceChain, amount }) });
+      const data = await res.json();
+      if (data.step === "fund_required") {
+        setStatus("error");
+        setStatusMsg(`Fund your source wallet at faucet.circle.com — Address: ${data.sourceAddress}`);
+      } else if (data.step === "pending_attestation" || data.step === "complete" || data.success) {
+        setTxHash(data.burnTxHash || "");
+        setStatus("success");
+        setStatusMsg(data.message || `${amount} USDC bridged to Arc!`);
+        setAmount("");
+      } else {
+        throw new Error(data.error || "Bridge failed");
+      }
     } catch (e) {
       setStatus("error");
       setStatusMsg(e.message?.slice(0, 80) || "Bridge failed");
