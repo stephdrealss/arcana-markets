@@ -5,8 +5,8 @@ const ENTITY_SECRET = process.env.CIRCLE_ENTITY_SECRET;
 
 const CHAIN_CONFIG = {
   'ETH-SEPOLIA': { blockchain: 'ETH-SEPOLIA', name: 'Ethereum Sepolia', domain: 0 },
-  'BASE-SEPOLIA': { blockchain: 'BASE-SEPOLIA', name: 'Base Sepolia', domain: 6 },
-  'AVAX-FUJI':   { blockchain: 'AVAX-FUJI',   name: 'Avalanche Fuji', domain: 1 },
+  'BASE-SEPOLIA': { blockchain: 'BASE-SEPOLIA', name: 'Base Sepolia',    domain: 6 },
+  'AVAX-FUJI':   { blockchain: 'AVAX-FUJI',   name: 'Avalanche Fuji',  domain: 1 },
 };
 
 const USDC_ADDRESSES = {
@@ -22,6 +22,30 @@ const TOKEN_MESSENGER_V2 = '0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA';
 // Bridge to BASE-SEPOLIA (domain 6) instead, then
 // use Arc's native bridge to move funds to Arc Testnet.
 const DESTINATION_DOMAIN = 6; // Base Sepolia (officially supported)
+
+// Fetches the current CCTP V2 protocol fee from Iris and returns maxFee in
+// USDC micro-units (6 decimals) with a 20% buffer. Falls back to 1000 if the
+// fee API is unavailable or returns zero (common on testnets with no fee).
+async function calculateMaxFee(sourceDomain, destDomain, usdcAmountMicro) {
+  try {
+    const res = await fetch(
+      `https://iris-api-sandbox.circle.com/v2/burn/USDC/fees/${sourceDomain}/${destDomain}`
+    );
+    const fees = await res.json();
+    const fastEntry = Array.isArray(fees) && fees.find(f => f.finalityThreshold === 1000);
+    const minimumFeeBps = fastEntry ? (fastEntry.minimumFee || 0) : 0;
+    if (minimumFeeBps > 0) {
+      const transferAmount = BigInt(usdcAmountMicro);
+      // minimumFee is in basis points; formula from Circle docs
+      const protocolFee = (transferAmount * BigInt(Math.round(minimumFeeBps * 100))) / 1_000_000n;
+      // Add 20% buffer so fluctuations don't cause a revert
+      return ((protocolFee * 120n) / 100n).toString();
+    }
+  } catch (_) {
+    // non-fatal; fall through to safe minimum
+  }
+  return '1000'; // 0.001 USDC — safe minimum when testnet fee is zero
+}
 
 async function getCipherText() {
   const res = await fetch('https://api.circle.com/v1/w3s/config/entity/publicKey', {
@@ -180,21 +204,23 @@ module.exports = async function handler(req, res) {
     console.log('Approval confirmed.');
 
     // Step 4 — Burn via CCTP V2
-    // Correct V2 signature: amount, destinationDomain, mintRecipient,
-    // burnToken, destinationCaller, maxFee, minFinalityThreshold
-    console.log('Burning USDC via CCTP V2...');
+    // Signature: amount, destinationDomain, mintRecipient, burnToken,
+    // destinationCaller, maxFee, minFinalityThreshold
+    const sourceDomain = chainConfig.domain;
+    const maxFee = await calculateMaxFee(sourceDomain, DESTINATION_DOMAIN, usdcAmount);
+    console.log(`Burning USDC via CCTP V2... maxFee=${maxFee} µUSDC minFinalityThreshold=1000`);
     const burnTxId = await executeTx(
       sourceWalletId,
       TOKEN_MESSENGER_V2,
       'depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)',
       [
         usdcAmount,
-        String(DESTINATION_DOMAIN),   // 6 = Base Sepolia (CCTP supported)
+        String(DESTINATION_DOMAIN),   // 6 = Base Sepolia
         mintRecipient,
         usdcAddress,
-        '0x0000000000000000000000000000000000000000000000000000000000000000',
-        '1000',                        // maxFee in USDC micro-units (non-zero!)
-        '1000'                         // minFinalityThreshold
+        '0x0000000000000000000000000000000000000000000000000000000000000000', // destinationCaller = anyone
+        maxFee,                        // dynamically calculated from Iris fee API
+        '1000'                         // minFinalityThreshold: 1000 = Fast Transfer (Confirmed)
       ]
     );
 
