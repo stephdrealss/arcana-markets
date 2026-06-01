@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY;
 const ENTITY_SECRET = process.env.CIRCLE_ENTITY_SECRET;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const CIRCLE_AGENT_WALLET_ID = process.env.CIRCLE_AGENT_WALLET_ID;
 const NEWS_API_KEY = '11b8bf7438ee486dbc17d2d4bf9e9cb0';
 
 const BLOCKCHAIN = 'ETH-SEPOLIA';
@@ -23,7 +24,17 @@ async function getCipherText() {
   return encrypted.toString('base64');
 }
 
-async function createAgentWallet() {
+async function getOrCreateAgentWallet() {
+  if (CIRCLE_AGENT_WALLET_ID) {
+    const res = await fetch(`https://api.circle.com/v1/w3s/wallets/${CIRCLE_AGENT_WALLET_ID}`, {
+      headers: { Authorization: `Bearer ${CIRCLE_API_KEY}` },
+    });
+    const data = await res.json();
+    const wallet = data?.data?.wallet;
+    if (!wallet?.id) throw new Error(`Could not fetch wallet ${CIRCLE_AGENT_WALLET_ID}: ${JSON.stringify(data)}`);
+    return { wallet, isNew: false };
+  }
+
   const ct1 = await getCipherText();
   const wsRes = await fetch('https://api.circle.com/v1/w3s/developer/walletSets', {
     method: 'POST',
@@ -31,7 +42,7 @@ async function createAgentWallet() {
     body: JSON.stringify({
       idempotencyKey: crypto.randomUUID(),
       entitySecretCiphertext: ct1,
-      name: `Arcana Agent Wallet - ${new Date().toISOString()}`,
+      name: 'Arcana Markets Agent',
     }),
   });
   const wsData = await wsRes.json();
@@ -48,13 +59,15 @@ async function createAgentWallet() {
       walletSetId,
       blockchains: [BLOCKCHAIN],
       count: 1,
-      metadata: [{ name: 'Arcana Markets Agent', refId: `agent-${Date.now()}` }],
+      metadata: [{ name: 'Arcana Markets Agent', refId: 'arcana-agent' }],
     }),
   });
   const walletData = await walletRes.json();
   const wallet = walletData?.data?.wallets?.[0];
   if (!wallet?.id) throw new Error(`Wallet creation failed: ${JSON.stringify(walletData)}`);
-  return wallet;
+
+  console.log(`[generate-markets] New agent wallet created — save this ID as CIRCLE_AGENT_WALLET_ID=${wallet.id}`);
+  return { wallet, isNew: true };
 }
 
 async function requestTestnetTokens(address) {
@@ -205,11 +218,11 @@ module.exports = async function handler(req, res) {
     // Step 2 — Generate 5 YES/NO prediction markets with AI
     const markets = await generateMarketsWithAI(headlines);
 
-    // Step 3 — Create Circle Agent Wallet
-    const agentWallet = await createAgentWallet();
+    // Step 3 — Reuse existing agent wallet or create a new one
+    const { wallet: agentWallet, isNew } = await getOrCreateAgentWallet();
 
-    // Step 4 — Request testnet USDC + native gas (best-effort; wallet may start empty)
-    const faucetResult = await requestTestnetTokens(agentWallet.address);
+    // Step 4 — Request testnet USDC + native gas only for newly created wallets
+    const faucetResult = isNew ? await requestTestnetTokens(agentWallet.address) : null;
 
     // Step 5 — Place USDC bets for each market
     const marketResults = [];
@@ -239,8 +252,9 @@ module.exports = async function handler(req, res) {
         id: agentWallet.id,
         address: agentWallet.address,
         blockchain: BLOCKCHAIN,
+        isNew,
         faucetRequested: !!faucetResult,
-        fundWalletUrl: `https://faucet.circle.com`,
+        fundWalletUrl: 'https://faucet.circle.com',
       },
       markets: marketResults,
       summary: {
