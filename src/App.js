@@ -1163,6 +1163,160 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
   );
 }
 
+// ── AI MARKETS SECTION ───────────────────────────────────────────────────────
+function AIMarketsSection({ t, onTrade }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [generatedAt, setGeneratedAt] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/generate-markets', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const json = await res.json();
+      if (json.success) { setData(json); setGeneratedAt(new Date(json.generatedAt)); }
+      else setError(json.error || 'Failed to generate markets');
+    } catch { setError('Could not reach /api/generate-markets'); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toMarket = (m) => ({
+    id: parseInt(m.id.replace('market_', '')) + 1000,
+    title: m.question,
+    cat: m.category === 'sports' ? 'Sports' : 'Crypto',
+    yes: m.aiPrediction === 'YES' ? m.confidence / 100 : (100 - m.confidence) / 100,
+    chg: 0, vol: '0', ends: 'Dec 31 2026',
+  });
+
+  return (
+    <div style={{ marginBottom: 40 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 18 }}>🤖</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: t.text }}>AI Markets</span>
+            <span style={{ fontSize: 9, fontWeight: 700, fontFamily: 'monospace', color: t.purple, background: t.purpleBg, border: `1px solid ${t.purpleBorder}`, padding: '2px 7px', borderRadius: 4, letterSpacing: 0.5 }}>LIVE · CIRCLE AGENT</span>
+          </div>
+          <p style={{ fontSize: 12, color: t.textMuted, fontFamily: 'monospace', margin: 0 }}>
+            Generated from top news · AI predictions · Agent wallet bets on ARC-TESTNET
+            {generatedAt && <span style={{ marginLeft: 8, opacity: 0.6 }}>· {generatedAt.toLocaleTimeString()}</span>}
+          </p>
+        </div>
+        <button onClick={load} disabled={loading}
+          style={{ padding: '6px 14px', background: t.purpleBg, border: `1px solid ${t.purpleBorder}`, borderRadius: 8, color: t.purple, fontSize: 11, fontFamily: 'monospace', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>
+          {loading ? '⏳ GENERATING...' : '↻ REFRESH'}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ padding: '12px 16px', background: t.redBg, border: `1px solid ${t.redBorder}`, borderRadius: 10, fontSize: 12, color: t.red, fontFamily: 'monospace', marginBottom: 12 }}>
+          ✕ {error}
+        </div>
+      )}
+
+      {/* Skeleton while loading with no data yet */}
+      {loading && !data && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+          {[1,2,3,4,5].map(i => (
+            <div key={i} style={{ background: t.surface, border: `1.5px solid ${t.border}`, borderRadius: 12, padding: 18, height: 220, opacity: 0.5 }}>
+              <div style={{ height: 10, background: t.surfaceAlt, borderRadius: 5, marginBottom: 10, width: '35%' }}/>
+              <div style={{ height: 14, background: t.surfaceAlt, borderRadius: 5, marginBottom: 8 }}/>
+              <div style={{ height: 12, background: t.surfaceAlt, borderRadius: 5, width: '75%', marginBottom: 8 }}/>
+              <div style={{ height: 12, background: t.surfaceAlt, borderRadius: 5, width: '55%' }}/>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {data && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+          {data.markets.map(m => {
+            const isYes = m.aiPrediction === 'YES';
+            const predColor = isYes ? t.green : t.red;
+            const predBg = isYes ? t.greenBg : t.redBg;
+            const predBorder = isYes ? t.greenBorder : t.redBorder;
+            const hasTx = m.bet?.state === 'COMPLETE' && m.bet?.txHash;
+            return (
+              <div key={m.id} style={{ background: t.surface, border: `1.5px solid ${t.purpleBorder}`, borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: 'box-shadow 0.18s' }}>
+                <div style={{ height: 3, background: `linear-gradient(90deg, ${t.purple}, ${t.blue})` }}/>
+                <div style={{ padding: '15px 17px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+                  {/* Category + AI badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: t.purple, background: t.purpleBg, border: `1px solid ${t.purpleBorder}`, padding: '2px 7px', borderRadius: 4, fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                      {m.category}
+                    </span>
+                    <span style={{ fontSize: 9, color: t.textLight, fontFamily: 'monospace' }}>🤖 AI · Circle Agent</span>
+                  </div>
+
+                  {/* Source headline */}
+                  <p style={{ fontSize: 11, color: t.textMuted, fontFamily: 'monospace', margin: 0, lineHeight: 1.4 }}>
+                    {m.headline.length > 72 ? m.headline.slice(0, 72) + '…' : m.headline}
+                  </p>
+
+                  {/* Market question */}
+                  <p style={{ fontSize: 13, color: t.text, fontWeight: 600, margin: 0, lineHeight: 1.45, flex: 1 }}>
+                    {m.question}
+                  </p>
+
+                  {/* AI prediction + confidence bar */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: t.textMuted, letterSpacing: 0.5 }}>AI PREDICTS</span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: predColor, background: predBg, border: `1.5px solid ${predBorder}`, padding: '2px 10px', borderRadius: 5, fontFamily: 'monospace' }}>
+                          {m.aiPrediction}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: predColor, fontFamily: 'monospace' }}>{m.confidence}%</span>
+                    </div>
+                    <div style={{ height: 5, borderRadius: 3, background: t.surfaceAlt, overflow: 'hidden' }}>
+                      <div style={{ width: `${m.confidence}%`, height: '100%', background: `linear-gradient(90deg, ${predColor}, ${t.blue})`, borderRadius: 3 }}/>
+                    </div>
+                    <p style={{ fontSize: 10, color: t.textMuted, fontFamily: 'monospace', margin: '5px 0 0', lineHeight: 1.4, fontStyle: 'italic' }}>
+                      {m.reasoning}
+                    </p>
+                  </div>
+
+                  {/* Agent bet status + ArcScan link */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: `1px solid ${t.border}` }}>
+                    <span style={{ fontSize: 10, fontFamily: 'monospace', color: t.textMuted }}>
+                      Agent bet:{' '}
+                      <span style={{ color: hasTx ? t.green : m.bet?.state === 'ERROR' ? t.red : t.amber, fontWeight: 700 }}>
+                        {hasTx ? `✓ ${m.betAmount} USDC` : m.bet?.state === 'ERROR' ? '✕ no funds' : '⏳ pending'}
+                      </span>
+                    </span>
+                    {hasTx && (
+                      <a href={m.bet.explorerUrl} target="_blank" rel="noreferrer"
+                        style={{ fontSize: 10, color: t.blue, fontFamily: 'monospace', textDecoration: 'none', fontWeight: 700 }}>↗ ArcScan</a>
+                    )}
+                  </div>
+
+                  {/* Trade buttons */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {['YES', 'NO'].map(side => (
+                      <button key={side} onClick={() => onTrade(toMarket(m), side)}
+                        style={{ flex: 1, padding: '9px 0', background: side === 'YES' ? t.greenBg : t.redBg, border: `1.5px solid ${side === 'YES' ? t.greenBorder : t.redBorder}`, borderRadius: 8, color: side === 'YES' ? t.green : t.red, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'monospace' }}>
+                        TRADE {side}
+                      </button>
+                    ))}
+                  </div>
+
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function ArcanaMarkets(){
   const [dark,setDark]=useState(()=>LS.get("arcana_theme",false));
@@ -1508,6 +1662,8 @@ export default function ArcanaMarkets(){
                 })}
               </div>
             </div>
+
+            <AIMarketsSection t={t} onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);}}/>
 
             <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"center",flexWrap:"wrap"}} className="filter-row">
               <div style={{display:"flex",gap:5,flex:1,flexWrap:"wrap"}}>
