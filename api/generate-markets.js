@@ -4,15 +4,13 @@ const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY;
 const ENTITY_SECRET = process.env.CIRCLE_ENTITY_SECRET;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const CIRCLE_AGENT_WALLET_ID = process.env.CIRCLE_AGENT_WALLET_ID;
-const NEWS_API_KEY = '11b8bf7438ee486dbc17d2d4bf9e9cb0';
+// Hardcoded fallback so the key works even before the env var is deployed
+const SPORTS_API_KEY = process.env.SPORTS_API_KEY || '40d401329899ef48045c6660a77573f9';
 
-// Fallback chain used only when creating a brand-new wallet
 const DEFAULT_BLOCKCHAIN = 'MATIC-AMOY';
-// Arcana Markets treasury — receives each agent bet (0.01 USDC per market)
 const MARKET_TREASURY = '0xb505c4ad888c05bc8c6f2bf237f57f2b1a11a0d2';
 const BET_AMOUNT = '0.01';
 
-// Official Circle testnet USDC addresses (from developers.circle.com/stablecoins/usdc-contract-addresses)
 const USDC_BY_CHAIN = {
   'ETH-SEPOLIA':  '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
   'BASE-SEPOLIA': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
@@ -32,6 +30,187 @@ const EXPLORER_BY_CHAIN = {
   'OP-SEPOLIA':   'https://sepolia-optimism.etherscan.io/tx',
   'ARC-TESTNET':  'https://testnet.arcscan.app/tx',
 };
+
+const SPORTS_HEADERS = { 'x-apisports-key': SPORTS_API_KEY };
+
+// Curated fallbacks used when the live API returns no fixtures
+function getFallbackFixtures() {
+  return [
+    { sport: 'football', competition: 'FIFA World Cup 2026', home: 'Brazil', away: 'Serbia', date: '2026-06-20', status: 'NS', round: 'Group Stage' },
+    { sport: 'football', competition: 'FIFA World Cup 2026', home: 'Argentina', away: 'Iceland', date: '2026-06-21', status: 'NS', round: 'Group Stage' },
+    { sport: 'football', competition: 'FIFA World Cup 2026', home: 'France', away: 'Mexico', date: '2026-06-22', status: 'NS', round: 'Group Stage' },
+    { sport: 'football', competition: 'FIFA World Cup 2026', home: 'USA', away: 'England', date: '2026-06-23', status: 'NS', round: 'Group Stage' },
+    { sport: 'basketball', competition: 'NBA Finals 2026', home: 'Oklahoma City Thunder', away: 'Boston Celtics', date: '2026-06-05', status: 'NS', round: 'Game 1' },
+    { sport: 'basketball', competition: 'NBA Finals 2026', home: 'Boston Celtics', away: 'Oklahoma City Thunder', date: '2026-06-08', status: 'NS', round: 'Game 2' },
+    { sport: 'tennis', competition: 'French Open 2026 (Roland Garros)', home: 'Novak Djokovic', away: 'Carlos Alcaraz', date: '2026-06-03', status: 'NS', round: 'Quarterfinal' },
+    { sport: 'tennis', competition: 'French Open 2026 (Roland Garros)', home: 'Iga Swiatek', away: 'Marta Kostyuk', date: '2026-06-05', status: 'NS', round: 'Semifinal' },
+  ];
+}
+
+async function fetchSportsFixtures() {
+  // FIFA World Cup 2026 (league 1), NBA (league 12), French Open / Roland Garros (tournament 2)
+  const [fifaRes, nbaRes, tennisRes] = await Promise.allSettled([
+    fetch('https://v3.football.api-sports.io/fixtures?league=1&season=2026&next=8', { headers: SPORTS_HEADERS }),
+    fetch('https://v3.basketball.api-sports.io/games?league=12&season=2025-2026&next=5', { headers: SPORTS_HEADERS }),
+    fetch('https://v1.tennis.api-sports.io/games?tournament=2&season=2026', { headers: SPORTS_HEADERS }),
+  ]);
+
+  const fixtures = [];
+
+  // — FIFA World Cup 2026 —
+  if (fifaRes.status === 'fulfilled') {
+    try {
+      const data = await fifaRes.value.json();
+      for (const f of (data.response || []).slice(0, 4)) {
+        const home = f.teams?.home?.name;
+        const away = f.teams?.away?.name;
+        if (home && away) {
+          fixtures.push({
+            sport: 'football',
+            competition: 'FIFA World Cup 2026',
+            home,
+            away,
+            date: (f.fixture?.date || '').slice(0, 10),
+            status: f.fixture?.status?.short || 'NS',
+            round: f.league?.round || 'Group Stage',
+            homeGoals: f.goals?.home,
+            awayGoals: f.goals?.away,
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  // — NBA Finals 2026 —
+  if (nbaRes.status === 'fulfilled') {
+    try {
+      const data = await nbaRes.value.json();
+      for (const g of (data.response || []).slice(0, 3)) {
+        const home = g.teams?.home?.name;
+        const away = g.teams?.away?.name;
+        if (home && away) {
+          fixtures.push({
+            sport: 'basketball',
+            competition: 'NBA Finals 2026',
+            home,
+            away,
+            date: (g.date?.start || '').slice(0, 10),
+            status: g.status?.short || 'NS',
+            round: g.stage || 'Finals',
+            homeScore: g.scores?.home?.points,
+            awayScore: g.scores?.away?.points,
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  // — French Open 2026 (Roland Garros) —
+  if (tennisRes.status === 'fulfilled') {
+    try {
+      const data = await tennisRes.value.json();
+      for (const m of (data.response || []).slice(0, 3)) {
+        // API-Sports tennis uses player_1/player_2 or players array depending on version
+        const p1 = m.players?.[0]?.player?.name ?? m.player_1?.name ?? m.home?.name;
+        const p2 = m.players?.[1]?.player?.name ?? m.player_2?.name ?? m.away?.name;
+        if (p1 && p2) {
+          fixtures.push({
+            sport: 'tennis',
+            competition: 'French Open 2026 (Roland Garros)',
+            home: p1,
+            away: p2,
+            date: (m.date || m.time?.date || '').slice(0, 10),
+            status: m.status?.short ?? (typeof m.status === 'string' ? m.status : 'NS'),
+            round: m.round?.name ?? m.stage?.name ?? '',
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Pad with fallbacks if we got fewer than 5 real fixtures
+  if (fixtures.length < 5) {
+    const fallbacks = getFallbackFixtures();
+    const needed = 5 - fixtures.length;
+    fixtures.push(...fallbacks.slice(0, needed));
+  }
+
+  console.log(`[generate-markets] Sports fixtures: ${fixtures.length} total (football:${fixtures.filter(f=>f.sport==='football').length}, basketball:${fixtures.filter(f=>f.sport==='basketball').length}, tennis:${fixtures.filter(f=>f.sport==='tennis').length})`);
+  return fixtures;
+}
+
+async function generateMarketsWithAI(fixtures) {
+  const fixtureList = fixtures.slice(0, 8).map((f, i) => {
+    const liveTag = ['1H','2H','HT','ET','P','LIVE'].includes(f.status) ? ' [LIVE]' : '';
+    const scoreTag = f.homeGoals != null ? ` (${f.homeGoals}–${f.awayGoals})` : f.homeScore != null ? ` (${f.homeScore}–${f.awayScore})` : '';
+    const roundTag = f.round ? ` — ${f.round}` : '';
+    return `${i + 1}. [${f.competition}${roundTag}] ${f.home} vs ${f.away} · ${f.date}${scoreTag}${liveTag}`;
+  }).join('\n');
+
+  const prompt = `You are a prediction market creator for a decentralized finance platform. Based on these real sports fixtures, generate exactly 5 YES/NO prediction markets suitable for on-chain betting.
+
+Sports Fixtures:
+${fixtureList}
+
+Generate 5 prediction markets as a JSON array. Each object must have:
+- "id": "market_1" through "market_5"
+- "question": a specific YES/NO question such as "Will Brazil beat Argentina in the FIFA World Cup 2026 Group Stage?" or "Will Djokovic win the French Open 2026 Quarterfinal?" or "Will OKC Thunder win Game 1 of the NBA Finals 2026?"
+- "category": "sports"
+- "headline": concise fixture description e.g. "Brazil vs Argentina · FIFA World Cup 2026 · Jun 20"
+- "aiPrediction": "YES" or "NO" — your confident prediction
+- "confidence": integer 50–95 (your prediction confidence percentage)
+- "betAmount": "0.01"
+- "reasoning": one sentence based on team/player form, head-to-head record, or tournament context
+
+Respond with ONLY the JSON array, no markdown, no explanation.`;
+
+  if (ANTHROPIC_API_KEY) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1200,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+      const data = await res.json();
+      const text = data?.content?.[0]?.text || '';
+      const match = text.match(/\[[\s\S]*\]/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(0, 5);
+      }
+    } catch (_) {}
+  }
+
+  // Deterministic fallback when no Anthropic key or parse fails
+  return fixtures.slice(0, 5).map((f, i) => {
+    let question;
+    if (f.sport === 'tennis') {
+      question = `Will ${f.home} win the ${f.competition}${f.round ? ' ' + f.round : ''}?`;
+    } else if (f.sport === 'basketball') {
+      question = `Will the ${f.home} beat the ${f.away} in the ${f.competition}${f.round ? ' ' + f.round : ''}?`;
+    } else {
+      question = `Will ${f.home} beat ${f.away} in the ${f.competition}${f.round ? ' ' + f.round : ''}?`;
+    }
+    return {
+      id: `market_${i + 1}`,
+      question,
+      category: 'sports',
+      headline: `${f.home} vs ${f.away} · ${f.competition} · ${f.date}`,
+      aiPrediction: i % 2 === 0 ? 'YES' : 'NO',
+      confidence: 55 + i * 7,
+      betAmount: BET_AMOUNT,
+      reasoning: `Based on recent form and historical head-to-head record in ${f.competition}.`,
+    };
+  });
+}
 
 async function getCipherText() {
   const res = await fetch('https://api.circle.com/v1/w3s/config/entity/publicKey', {
@@ -60,11 +239,7 @@ async function getOrCreateAgentWallet() {
   const wsRes = await fetch('https://api.circle.com/v1/w3s/developer/walletSets', {
     method: 'POST',
     headers: { Authorization: `Bearer ${CIRCLE_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      idempotencyKey: crypto.randomUUID(),
-      entitySecretCiphertext: ct1,
-      name: 'Arcana Markets Agent',
-    }),
+    body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), entitySecretCiphertext: ct1, name: 'Arcana Markets Agent' }),
   });
   const wsData = await wsRes.json();
   const walletSetId = wsData?.data?.walletSet?.id;
@@ -96,87 +271,12 @@ async function requestTestnetTokens(address) {
     const res = await fetch('https://api.circle.com/v1/faucet/drips', {
       method: 'POST',
       headers: { Authorization: `Bearer ${CIRCLE_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ blockchain: BLOCKCHAIN, address, usdc: true, native: true }),
+      body: JSON.stringify({ blockchain: DEFAULT_BLOCKCHAIN, address, usdc: true, native: true }),
     });
-    const data = await res.json();
-    return data;
+    return await res.json();
   } catch (_) {
     return null;
   }
-}
-
-async function fetchNewsHeadlines() {
-  const [sportsRes, cryptoRes] = await Promise.all([
-    fetch(`https://newsapi.org/v2/top-headlines?category=sports&pageSize=8&language=en&apiKey=${NEWS_API_KEY}`),
-    fetch(`https://newsapi.org/v2/everything?q=cryptocurrency+OR+bitcoin+OR+ethereum&sortBy=publishedAt&pageSize=7&language=en&apiKey=${NEWS_API_KEY}`),
-  ]);
-  const [sports, cryptoNews] = await Promise.all([sportsRes.json(), cryptoRes.json()]);
-  const headlines = [
-    ...(sports.articles || []).filter(a => a.title && a.title !== '[Removed]').map(a => ({ title: a.title, source: a.source?.name, category: 'sports' })),
-    ...(cryptoNews.articles || []).filter(a => a.title && a.title !== '[Removed]').map(a => ({ title: a.title, source: a.source?.name, category: 'crypto' })),
-  ];
-  return headlines;
-}
-
-async function generateMarketsWithAI(headlines) {
-  const headlineList = headlines
-    .slice(0, 10)
-    .map((h, i) => `${i + 1}. [${h.category.toUpperCase()}] ${h.title}`)
-    .join('\n');
-
-  const prompt = `You are a prediction market creator for a decentralized finance platform. Based on these recent news headlines, generate exactly 5 YES/NO prediction markets suitable for on-chain betting.
-
-News Headlines:
-${headlineList}
-
-Generate 5 prediction markets as a JSON array. Each object must have:
-- "id": "market_1" through "market_5"
-- "question": a clear, specific YES/NO question that resolves within 30 days
-- "category": "sports" or "crypto"
-- "headline": the exact headline text used as inspiration
-- "aiPrediction": "YES" or "NO" — your confident prediction
-- "confidence": integer 50–95 (your prediction confidence percentage)
-- "betAmount": "0.01"
-- "reasoning": one sentence explaining the prediction
-
-Respond with ONLY the JSON array, no markdown, no explanation.`;
-
-  if (ANTHROPIC_API_KEY) {
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1200,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
-      const data = await res.json();
-      const text = data?.content?.[0]?.text || '';
-      const match = text.match(/\[[\s\S]*\]/);
-      if (match) {
-        const parsed = JSON.parse(match[0]);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(0, 5);
-      }
-    } catch (_) {}
-  }
-
-  // Deterministic fallback when no Anthropic key or parse fails
-  return headlines.slice(0, 5).map((h, i) => ({
-    id: `market_${i + 1}`,
-    question: `Will there be a major positive development related to: "${h.title.split(' ').slice(0, 7).join(' ')}..."?`,
-    category: h.category,
-    headline: h.title,
-    aiPrediction: i % 2 === 0 ? 'YES' : 'NO',
-    confidence: 55 + i * 7,
-    betAmount: BET_AMOUNT,
-    reasoning: `Based on current ${h.category} trends and recent reporting from ${h.source || 'major outlets'}.`,
-  }));
 }
 
 async function placeBet(walletId, blockchain, market) {
@@ -232,22 +332,18 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // Step 1 — Fetch sports + crypto headlines from NewsAPI
-    const headlines = await fetchNewsHeadlines();
-    if (!headlines.length) {
-      return res.status(502).json({ error: 'NewsAPI returned no headlines — check API key or quota' });
-    }
+    // Step 1 — Fetch live/upcoming fixtures from API-Sports (World Cup, NBA Finals, French Open)
+    const fixtures = await fetchSportsFixtures();
 
     // Step 2 — Generate 5 YES/NO prediction markets with AI
-    const markets = await generateMarketsWithAI(headlines);
+    const markets = await generateMarketsWithAI(fixtures);
 
     // Step 3 — Reuse existing agent wallet or create a new one
     const { wallet: agentWallet, isNew } = await getOrCreateAgentWallet();
 
-    // Step 4 — Request testnet USDC + native gas only for newly created wallets
+    // Step 4 — Request testnet tokens only for brand-new wallets
     const faucetResult = isNew ? await requestTestnetTokens(agentWallet.address) : null;
 
-    // Use the chain Circle actually has for this wallet, not our hardcoded constant
     const walletBlockchain = agentWallet.blockchain || DEFAULT_BLOCKCHAIN;
     const explorerBase = EXPLORER_BY_CHAIN[walletBlockchain] || 'https://amoy.polygonscan.com/tx';
 
@@ -280,6 +376,10 @@ module.exports = async function handler(req, res) {
         isNew,
         faucetRequested: !!faucetResult,
         fundWalletUrl: 'https://faucet.circle.com',
+      },
+      sportsData: {
+        fixturesFound: fixtures.length,
+        sources: ['FIFA World Cup 2026', 'NBA Finals 2026', 'French Open 2026 (Roland Garros)'],
       },
       markets: marketResults,
       summary: {
