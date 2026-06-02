@@ -6,11 +6,32 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const CIRCLE_AGENT_WALLET_ID = process.env.CIRCLE_AGENT_WALLET_ID;
 const NEWS_API_KEY = '11b8bf7438ee486dbc17d2d4bf9e9cb0';
 
-const BLOCKCHAIN = 'MATIC-AMOY';
-const USDC_ADDRESS = '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582';
+// Fallback chain used only when creating a brand-new wallet
+const DEFAULT_BLOCKCHAIN = 'MATIC-AMOY';
 // Arcana Markets treasury — receives each agent bet (0.01 USDC per market)
 const MARKET_TREASURY = '0xb505c4ad888c05bc8c6f2bf237f57f2b1a11a0d2';
 const BET_AMOUNT = '0.01';
+
+// Official Circle testnet USDC addresses (from developers.circle.com/stablecoins/usdc-contract-addresses)
+const USDC_BY_CHAIN = {
+  'ETH-SEPOLIA':  '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+  'BASE-SEPOLIA': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+  'MATIC-AMOY':   '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582',
+  'AVAX-FUJI':    '0x5425890298aed601595a70AB815c96711a31Bc65',
+  'ARB-SEPOLIA':  '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
+  'OP-SEPOLIA':   '0x5fd84259d66Cd46123540766Be93DFE6D43130D7',
+  'ARC-TESTNET':  '0x3600000000000000000000000000000000000000',
+};
+
+const EXPLORER_BY_CHAIN = {
+  'ETH-SEPOLIA':  'https://sepolia.etherscan.io/tx',
+  'BASE-SEPOLIA': 'https://sepolia.basescan.org/tx',
+  'MATIC-AMOY':   'https://amoy.polygonscan.com/tx',
+  'AVAX-FUJI':    'https://testnet.snowtrace.io/tx',
+  'ARB-SEPOLIA':  'https://sepolia.arbiscan.io/tx',
+  'OP-SEPOLIA':   'https://sepolia-optimism.etherscan.io/tx',
+  'ARC-TESTNET':  'https://testnet.arcscan.app/tx',
+};
 
 async function getCipherText() {
   const res = await fetch('https://api.circle.com/v1/w3s/config/entity/publicKey', {
@@ -57,7 +78,7 @@ async function getOrCreateAgentWallet() {
       idempotencyKey: crypto.randomUUID(),
       entitySecretCiphertext: ct2,
       walletSetId,
-      blockchains: [BLOCKCHAIN],
+      blockchains: [DEFAULT_BLOCKCHAIN],
       count: 1,
       metadata: [{ name: 'Arcana Markets Agent', refId: 'arcana-agent' }],
     }),
@@ -158,7 +179,9 @@ Respond with ONLY the JSON array, no markdown, no explanation.`;
   }));
 }
 
-async function placeBet(walletId, market) {
+async function placeBet(walletId, blockchain, market) {
+  const usdcAddress = USDC_BY_CHAIN[blockchain];
+  if (!usdcAddress) throw new Error(`No USDC address known for chain ${blockchain}`);
   const ct = await getCipherText();
   const res = await fetch('https://api.circle.com/v1/w3s/developer/transactions/transfer', {
     method: 'POST',
@@ -167,8 +190,8 @@ async function placeBet(walletId, market) {
       idempotencyKey: crypto.randomUUID(),
       entitySecretCiphertext: ct,
       walletId,
-      tokenAddress: USDC_ADDRESS,
-      blockchain: BLOCKCHAIN,
+      tokenAddress: usdcAddress,
+      blockchain,
       destinationAddress: MARKET_TREASURY,
       amounts: [market.betAmount],
       feeLevel: 'LOW',
@@ -224,21 +247,23 @@ module.exports = async function handler(req, res) {
     // Step 4 — Request testnet USDC + native gas only for newly created wallets
     const faucetResult = isNew ? await requestTestnetTokens(agentWallet.address) : null;
 
+    // Use the chain Circle actually has for this wallet, not our hardcoded constant
+    const walletBlockchain = agentWallet.blockchain || DEFAULT_BLOCKCHAIN;
+    const explorerBase = EXPLORER_BY_CHAIN[walletBlockchain] || 'https://amoy.polygonscan.com/tx';
+
     // Step 5 — Place USDC bets for each market
     const marketResults = [];
     for (const market of markets) {
       let betResult;
       try {
-        const txId = await placeBet(agentWallet.id, market);
+        const txId = await placeBet(agentWallet.id, walletBlockchain, market);
         const txStatus = await waitForTx(txId);
         betResult = {
           txId,
           txHash: txStatus.txHash,
           state: txStatus.state,
           failed: txStatus.failed || false,
-          explorerUrl: txStatus.txHash
-            ? `https://amoy.polygonscan.com/tx/${txStatus.txHash}`
-            : null,
+          explorerUrl: txStatus.txHash ? `${explorerBase}/${txStatus.txHash}` : null,
         };
       } catch (e) {
         betResult = { error: e.message, state: 'ERROR', failed: true };
@@ -251,7 +276,7 @@ module.exports = async function handler(req, res) {
       agentWallet: {
         id: agentWallet.id,
         address: agentWallet.address,
-        blockchain: BLOCKCHAIN,
+        blockchain: walletBlockchain,
         isNew,
         faucetRequested: !!faucetResult,
         fundWalletUrl: 'https://faucet.circle.com',
