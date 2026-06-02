@@ -923,16 +923,16 @@ function Activity({t,account,newTrades=[]}){
 }
 
 // ── GRID CARD with resolved/cancelled state ───────────────────────────────────
-function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled}){
+function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,isEnded}){
   const [hov,setHov]=useState(false);
   const yes=pct(m.yes),no=100-yes,up=m.chg>=0,sparkCol=up?t.green:t.red;
 
-  const topBarColor=isResolved?(resolvedOutcome?t.green:t.red):isCancelled?t.amber:hov?t.blue:t.border;
-  const cardBorderColor=isResolved?(resolvedOutcome?t.greenBorder:t.redBorder):isCancelled?t.amber:hov?t.cardBorderHov:t.cardBorder;
+  const topBarColor=isResolved?(resolvedOutcome?t.green:t.red):isCancelled?t.amber:isEnded?t.textMuted:hov?t.blue:t.border;
+  const cardBorderColor=isResolved?(resolvedOutcome?t.greenBorder:t.redBorder):isCancelled?t.amber:isEnded?t.border:hov?t.cardBorderHov:t.cardBorder;
 
   return(
     <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{background:t.surface,border:`1.5px solid ${cardBorderColor}`,borderRadius:12,display:"flex",flexDirection:"column",cursor:"pointer",transition:"all 0.18s",boxShadow:hov?t.shadowHov:t.shadow,opacity:isCancelled?0.75:1}}>
+      style={{background:t.surface,border:`1.5px solid ${cardBorderColor}`,borderRadius:12,display:"flex",flexDirection:"column",cursor:"pointer",transition:"all 0.18s",boxShadow:hov?t.shadowHov:t.shadow,opacity:isEnded?0.65:isCancelled?0.75:1}}>
       <div style={{height:3,background:topBarColor,borderRadius:"10px 10px 0 0",transition:"background 0.2s"}}/>
       <div style={{padding:"15px 17px",flex:1,display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -945,8 +945,9 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled}
           <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
             {isResolved&&<span style={{fontSize:9,fontWeight:700,color:resolvedOutcome?t.green:t.red,background:resolvedOutcome?t.greenBg:t.redBg,padding:"2px 6px",borderRadius:4,fontFamily:"monospace"}}>{resolvedOutcome?"✓ YES WON":"✕ NO WON"}</span>}
             {isCancelled&&<span style={{fontSize:9,fontWeight:700,color:t.amber,background:t.amberBg,padding:"2px 6px",borderRadius:4}}>CANCELLED</span>}
-            {!isResolved&&!isCancelled&&m.hot&&<span style={{fontSize:9,fontWeight:700,color:t.amber,background:t.amberBg,padding:"2px 5px",borderRadius:4}}>🔥 HOT</span>}
-            {!isResolved&&!isCancelled&&m.trending&&<span style={{fontSize:9,fontWeight:700,color:t.green,background:t.greenBg,padding:"2px 5px",borderRadius:4}}>↑ TREND</span>}
+            {isEnded&&!isResolved&&!isCancelled&&<span style={{fontSize:9,fontWeight:700,color:t.textMuted,background:t.surfaceAlt,border:`1px solid ${t.border}`,padding:"2px 6px",borderRadius:4,fontFamily:"monospace"}}>ENDED</span>}
+            {!isResolved&&!isCancelled&&!isEnded&&m.hot&&<span style={{fontSize:9,fontWeight:700,color:t.amber,background:t.amberBg,padding:"2px 5px",borderRadius:4}}>🔥 HOT</span>}
+            {!isResolved&&!isCancelled&&!isEnded&&m.trending&&<span style={{fontSize:9,fontWeight:700,color:t.green,background:t.greenBg,padding:"2px 5px",borderRadius:4}}>↑ TREND</span>}
           </div>
         </div>
 
@@ -986,6 +987,10 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled}
         ):isCancelled?(
           <div style={{padding:"10px",background:t.amberBg,border:`1px solid ${t.amber}`,borderRadius:8,textAlign:"center",fontSize:13,fontWeight:700,color:t.amber,fontFamily:"monospace"}}>
             CANCELLED — refund available in Portfolio
+          </div>
+        ):isEnded?(
+          <div style={{padding:"10px",background:t.surfaceAlt,border:`1px solid ${t.border}`,borderRadius:8,textAlign:"center",fontSize:12,fontWeight:700,color:t.textMuted,fontFamily:"monospace"}}>
+            🔒 Market ended · pending resolution
           </div>
         ):(
           <div style={{display:"flex",gap:8}}>
@@ -1636,8 +1641,7 @@ export default function ArcanaMarkets(){
               {filtered.map(m=>{
                 const outcome=resolutions[String(m.id)];
                 const isResolved=outcome!==undefined;
-                // isCancelled: we'd need an on-chain read per card to know;
-                // for now we show cancelled state only in Portfolio where we do fetch on-chain
+                const isEnded=!isResolved&&parseEndDate(m.ends)<=now;
                 return(
                   <div key={m.id} className="card">
                     <GridCard m={m}
@@ -1646,6 +1650,7 @@ export default function ArcanaMarkets(){
                       resolvedOutcome={outcome}
                       isResolved={isResolved}
                       isCancelled={false}
+                      isEnded={isEnded}
                       livePrice={
                         m.cat==="Crypto"&&m.title.includes("BTC")&&livePrices.bitcoin?`BTC $${livePrices.bitcoin.price?.toLocaleString()}`:
                         m.cat==="Crypto"&&m.title.includes("ETH")&&livePrices.ethereum?`ETH $${livePrices.ethereum.price?.toLocaleString()}`:
