@@ -1190,11 +1190,11 @@ function AIMarketsSection({ t, onTrade }) {
     cat: m.category === 'sports' ? 'Sports' : 'Crypto',
     yes: m.aiPrediction === 'YES' ? m.confidence / 100 : (100 - m.confidence) / 100,
     chg: 0, vol: '0', ends: 'Dec 31 2026',
+    hot: false, trending: false,
   });
 
   return (
     <div style={{ marginBottom: 40 }}>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -1219,14 +1219,15 @@ function AIMarketsSection({ t, onTrade }) {
         </div>
       )}
 
-      {/* Skeleton while loading with no data yet */}
       {loading && !data && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+        <div className="markets-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {[1,2,3,4,5].map(i => (
-            <div key={i} style={{ background: t.surface, border: `1.5px solid ${t.border}`, borderRadius: 12, padding: 18, height: 220, opacity: 0.5 }}>
-              <div style={{ height: 10, background: t.surfaceAlt, borderRadius: 5, marginBottom: 10, width: '35%' }}/>
+            <div key={i} style={{ background: t.surface, border: `1.5px solid ${t.border}`, borderRadius: 12, padding: 18, height: 320, opacity: 0.5 }}>
+              <div style={{ height: 3, background: t.surfaceAlt, borderRadius: '10px 10px 0 0', marginBottom: 15 }}/>
+              <div style={{ height: 10, background: t.surfaceAlt, borderRadius: 5, marginBottom: 12, width: '35%' }}/>
               <div style={{ height: 14, background: t.surfaceAlt, borderRadius: 5, marginBottom: 8 }}/>
-              <div style={{ height: 12, background: t.surfaceAlt, borderRadius: 5, width: '75%', marginBottom: 8 }}/>
+              <div style={{ height: 12, background: t.surfaceAlt, borderRadius: 5, width: '75%', marginBottom: 16 }}/>
+              <div style={{ height: 36, background: t.surfaceAlt, borderRadius: 5, marginBottom: 8 }}/>
               <div style={{ height: 12, background: t.surfaceAlt, borderRadius: 5, width: '55%' }}/>
             </div>
           ))}
@@ -1234,80 +1235,27 @@ function AIMarketsSection({ t, onTrade }) {
       )}
 
       {data && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+        <div className="markets-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {data.markets.map(m => {
-            const isYes = m.aiPrediction === 'YES';
-            const predColor = isYes ? t.green : t.red;
-            const predBg = isYes ? t.greenBg : t.redBg;
-            const predBorder = isYes ? t.greenBorder : t.redBorder;
             const hasTx = m.bet?.state === 'COMPLETE' && m.bet?.txHash;
+            const headline = m.headline.length > 60 ? m.headline.slice(0, 60) + '…' : m.headline;
+            const liveInfo = hasTx
+              ? `✓ Agent bet · ↗ ArcScan`
+              : `🤖 ${headline}`;
             return (
-              <div key={m.id} style={{ background: t.surface, border: `1.5px solid ${t.purpleBorder}`, borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: 'box-shadow 0.18s' }}>
-                <div style={{ height: 3, background: `linear-gradient(90deg, ${t.purple}, ${t.blue})` }}/>
-                <div style={{ padding: '15px 17px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-                  {/* Category + AI badge */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: t.purple, background: t.purpleBg, border: `1px solid ${t.purpleBorder}`, padding: '2px 7px', borderRadius: 4, fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                      {m.category}
-                    </span>
-                    <span style={{ fontSize: 9, color: t.textLight, fontFamily: 'monospace' }}>🤖 AI · Circle Agent</span>
-                  </div>
-
-                  {/* Source headline */}
-                  <p style={{ fontSize: 11, color: t.textMuted, fontFamily: 'monospace', margin: 0, lineHeight: 1.4 }}>
-                    {m.headline.length > 72 ? m.headline.slice(0, 72) + '…' : m.headline}
-                  </p>
-
-                  {/* Market question */}
-                  <p style={{ fontSize: 13, color: t.text, fontWeight: 600, margin: 0, lineHeight: 1.45, flex: 1 }}>
-                    {m.question}
-                  </p>
-
-                  {/* AI prediction + confidence bar */}
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: t.textMuted, letterSpacing: 0.5 }}>AI PREDICTS</span>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: predColor, background: predBg, border: `1.5px solid ${predBorder}`, padding: '2px 10px', borderRadius: 5, fontFamily: 'monospace' }}>
-                          {m.aiPrediction}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: predColor, fontFamily: 'monospace' }}>{m.confidence}%</span>
-                    </div>
-                    <div style={{ height: 5, borderRadius: 3, background: t.surfaceAlt, overflow: 'hidden' }}>
-                      <div style={{ width: `${m.confidence}%`, height: '100%', background: `linear-gradient(90deg, ${predColor}, ${t.blue})`, borderRadius: 3 }}/>
-                    </div>
-                    <p style={{ fontSize: 10, color: t.textMuted, fontFamily: 'monospace', margin: '5px 0 0', lineHeight: 1.4, fontStyle: 'italic' }}>
-                      {m.reasoning}
-                    </p>
-                  </div>
-
-                  {/* Agent bet status + ArcScan link */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: `1px solid ${t.border}` }}>
-                    <span style={{ fontSize: 10, fontFamily: 'monospace', color: t.textMuted }}>
-                      Agent bet:{' '}
-                      <span style={{ color: hasTx ? t.green : m.bet?.state === 'ERROR' ? t.red : t.amber, fontWeight: 700 }}>
-                        {hasTx ? `✓ ${m.betAmount} USDC` : m.bet?.state === 'ERROR' ? '✕ no funds' : '⏳ pending'}
-                      </span>
-                    </span>
-                    {hasTx && (
-                      <a href={m.bet.explorerUrl} target="_blank" rel="noreferrer"
-                        style={{ fontSize: 10, color: t.blue, fontFamily: 'monospace', textDecoration: 'none', fontWeight: 700 }}>↗ ArcScan</a>
-                    )}
-                  </div>
-
-                  {/* Trade buttons */}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {['YES', 'NO'].map(side => (
-                      <button key={side} onClick={() => onTrade(toMarket(m), side)}
-                        style={{ flex: 1, padding: '9px 0', background: side === 'YES' ? t.greenBg : t.redBg, border: `1.5px solid ${side === 'YES' ? t.greenBorder : t.redBorder}`, borderRadius: 8, color: side === 'YES' ? t.green : t.red, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'monospace' }}>
-                        TRADE {side}
-                      </button>
-                    ))}
-                  </div>
-
-                </div>
+              <div key={m.id} style={{ position: 'relative' }} className="card">
+                <GridCard
+                  m={toMarket(m)}
+                  onTrade={(mkt, side) => onTrade(mkt, side)}
+                  t={t}
+                  resolvedOutcome={undefined}
+                  isResolved={false}
+                  isCancelled={false}
+                  livePrice={liveInfo}
+                />
+                <span style={{ position: 'absolute', top: 18, right: 17, fontSize: 9, fontWeight: 700, fontFamily: 'monospace', color: t.purple, background: t.purpleBg, border: `1px solid ${t.purpleBorder}`, padding: '2px 6px', borderRadius: 4, pointerEvents: 'none' }}>
+                  🤖 AI
+                </span>
               </div>
             );
           })}
