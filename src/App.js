@@ -399,7 +399,8 @@ const ALL_MARKETS = [
 ];
 
 const CATS=["All","Trending","Crypto","Arc","Sports","Politics","Macro","Tech & AI","Culture","Science"];
-const TOP_MOVERS=[...ALL_MARKETS].sort((a,b)=>Math.abs(b.chg)-Math.abs(a.chg)).slice(0,4);
+function parseEndDate(s){const hasYear=/20\d\d/.test(s||"");return new Date(hasYear?s:(s||"")+" 2026");}
+const TOP_MOVERS=[...ALL_MARKETS].filter(m=>{const d=parseEndDate(m.ends);return isNaN(d.getTime())||d>new Date();}).sort((a,b)=>Math.abs(b.chg)-Math.abs(a.chg)).slice(0,4);
 const pct=v=>Math.round(v*100);
 
 // ── SPARK LINE ────────────────────────────────────────────────────────────────
@@ -1036,6 +1037,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
 
   const placeOrder=async()=>{
     if(!account){setError("Connect your wallet first!");return;}
+    if(isMarketEnded){setError("This market has closed and no longer accepts trades.");return;}
     if(!amt||parseFloat(amt)<0.01){setError("Minimum trade is 0.01 USDC");return;}
     if(parseFloat(usdcBalance)<parseFloat(amt)){setError(`Insufficient USDC. You have ${usdcBalance}`);return;}
     setLoading(true);setError("");
@@ -1080,8 +1082,10 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
         setDone(true);
       }
     }catch(err){
-      if(err.code===4001||err.message?.includes("rejected"))setError("Transaction cancelled.");
-      else setError(err.message||"Transaction failed. Please try again.");
+      const msg=err.message||"";
+      if(err.code===4001||msg.includes("rejected")||msg.includes("user denied"))setError("Transaction cancelled.");
+      else if(msg.toLowerCase().includes("market has ended")||msg.toLowerCase().includes("market ended"))setError("This market has closed and no longer accepts trades.");
+      else setError(msg||"Transaction failed. Please try again.");
     }
     setLoading(false);
   };
@@ -1426,7 +1430,7 @@ export default function ArcanaMarkets(){
 
   const refreshResolutions=()=>setResolutions(getResolutions());
 
-  const now=new Date(); const filtered=ALL_MARKETS.filter(m=>{const hasYear=/20\d\d/.test(m.ends||"");const endDate=new Date(hasYear?m.ends:(m.ends||"")+" 2026");return isNaN(endDate.getTime())||endDate>now;}).filter(m=>cat==="Trending"?m.trending:cat==="All"?true:m.cat===cat).filter(m=>!q||m.title.toLowerCase().includes(q.toLowerCase()));
+  const now=new Date(); const filtered=ALL_MARKETS.filter(m=>{const d=parseEndDate(m.ends);return isNaN(d.getTime())||d>now;}).filter(m=>cat==="Trending"?m.trending:cat==="All"?true:m.cat===cat).filter(m=>!q||m.title.toLowerCase().includes(q.toLowerCase()));
   const tick=ALL_MARKETS[tickIdx];
 
   const NAV_TABS=["Markets","Portfolio",...(isOwner?["Admin"]:[]),"Leaderboard","Activity"];
