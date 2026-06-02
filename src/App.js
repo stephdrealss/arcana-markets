@@ -1364,16 +1364,22 @@ export default function ArcanaMarkets(){
   useEffect(()=>{
     const userDisconnected=LS.get("arcana_user_disconnected",false);
     const lastWallet=LS.get("arcana_last_wallet",null);
-    if(!userDisconnected&&lastWallet&&window.ethereum){
-      window.ethereum.request({method:"eth_accounts"}).then(accs=>{
-        const still=accs.find(a=>a.toLowerCase()===lastWallet.toLowerCase());
-        if(still){setAccount(still);refreshBal(still);loadWalletData(still);checkOwner(still);}
-        else LS.set("arcana_last_wallet",null);
-      }).catch(()=>{});
+    const savedType=LS.get("arcana_wallet_type",null);
+    if(!userDisconnected&&lastWallet){
+      if(savedType==="circle"){
+        // Circle wallets have no ethereum provider — restore directly from localStorage
+        setAccount(lastWallet);refreshBal(lastWallet);loadWalletData(lastWallet);checkOwner(lastWallet);
+      } else if(window.ethereum){
+        window.ethereum.request({method:"eth_accounts"}).then(accs=>{
+          const still=accs.find(a=>a.toLowerCase()===lastWallet.toLowerCase());
+          if(still){setAccount(still);refreshBal(still);loadWalletData(still);checkOwner(still);}
+          else LS.set("arcana_last_wallet",null);
+        }).catch(()=>{});
+      }
     }
     if(window.ethereum){
       const h=(accs)=>{
-               if(LS.get("arcana_user_disconnected",false))return;
+        if(LS.get("arcana_user_disconnected",false))return;
         const addr=accs[0]||null;
         if(addr){LS.set("arcana_user_disconnected",false);LS.set("arcana_last_wallet",addr);setAccount(addr);refreshBal(addr);loadWalletData(addr);checkOwner(addr);}
         else{LS.set("arcana_last_wallet",null);setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);}
@@ -1521,7 +1527,7 @@ export default function ArcanaMarkets(){
     </>)}
   </div>
 ):(
-              <WalletModal t={t} account={account} onConnected={(addr,type,wid)=>{ setAccount(addr); setWalletType(type||"evm"); setCircleWalletId(wid||null); LS.set("arcana_last_wallet",addr); LS.set("arcana_wallet_type",type||"evm"); if(wid)LS.set("arcana_circle_wallet_id",wid); refreshBal(addr); loadWalletData(addr); checkOwner(addr); }} onDisconnected={disconnectWallet} />
+              <WalletModal t={t} account={account} onConnected={(addr,type,wid,rememberMe)=>{ setAccount(addr); setWalletType(type||"evm"); setCircleWalletId(wid||null); LS.set("arcana_user_disconnected",false); if(rememberMe!==false){LS.set("arcana_last_wallet",addr);LS.set("arcana_wallet_type",type||"evm");if(wid)LS.set("arcana_circle_wallet_id",wid);} refreshBal(addr); loadWalletData(addr); checkOwner(addr); }} onDisconnected={disconnectWallet} />
                
                       )}
           </div>

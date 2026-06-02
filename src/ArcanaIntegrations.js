@@ -103,6 +103,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
   const [evmLoading, setEvmLoading]   = useState(null);
   const [evmError, setEvmError]       = useState("");
   const [copied, setCopied]           = useState(false);
+  const [rememberMe, setRememberMe]   = useState(true);
   const modalRef                      = useRef(null);
   const dropdownRef                   = useRef(null);
 
@@ -154,7 +155,7 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
           });
         }
       }
-      onConnected(accounts[0], "evm", null);
+      onConnected(accounts[0], "evm", null, rememberMe);
       setOpen(false);
     } catch (e) {
       if (e.code !== 4001) setEvmError(e.message?.slice(0, 80) || "Connection failed");
@@ -254,9 +255,9 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
                     <p style={{ color:"rgba(255,255,255,0.7)", fontSize:11, fontFamily:"monospace", margin:"0 0 8px" }}>Code sent to {circleEmail}</p>
                     <div style={{ display:"flex", gap:8 }}>
                       <input type="text" placeholder="6-digit code" value={circleOtp} onChange={e => setCircleOtp(e.target.value)}
-                        onKeyDown={e => e.key === "Enter" && verifyOtp(circleEmail, circleOtp, circleToken).then(result => { if (result) { onConnected(result.address, "circle", result.walletId); setOpen(false); } })}
+                        onKeyDown={e => e.key === "Enter" && verifyOtp(circleEmail, circleOtp, circleToken).then(result => { if (result) { onConnected(result.address, "circle", result.walletId, rememberMe); setOpen(false); } })}
                         style={{ flex:1, background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, outline:"none", letterSpacing:4, fontFamily:"monospace" }} />
-                      <button onClick={() => verifyOtp(circleEmail, circleOtp, circleToken).then(result => { if (result) { onConnected(result.address, "circle", result.walletId); setOpen(false); } })}
+                      <button onClick={() => verifyOtp(circleEmail, circleOtp, circleToken).then(result => { if (result) { onConnected(result.address, "circle", result.walletId, rememberMe); setOpen(false); } })}
                         disabled={circleLoading || !circleOtp}
                         style={{ padding:"9px 16px", background:"#fff", color:"#1d4ed8", border:"none", borderRadius:8, fontWeight:800, fontSize:13, cursor:circleLoading?"not-allowed":"pointer" }}>
                         {circleLoading ? "⏳" : "Verify →"}
@@ -300,7 +301,12 @@ export function WalletModal({ t, account, onConnected, onDisconnected }) {
               </div>
 
               {evmError && <p style={{ color:t.red, fontSize:11, fontFamily:"monospace", margin:"10px 0 0" }}>✕ {evmError}</p>}
-              <p style={{ fontSize:10, color:t.textMuted, fontFamily:"monospace", textAlign:"center", marginTop:14 }}>
+              <label style={{ display:"flex", alignItems:"center", gap:8, marginTop:14, cursor:"pointer", userSelect:"none" }}>
+                <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)}
+                  style={{ width:14, height:14, cursor:"pointer", accentColor:t.blue }} />
+                <span style={{ fontSize:12, color:t.textMuted, fontFamily:"monospace" }}>Remember me on this device</span>
+              </label>
+              <p style={{ fontSize:10, color:t.textMuted, fontFamily:"monospace", textAlign:"center", marginTop:10 }}>
                 Connects to Arc Testnet · USDC settlement · Powered by Circle
               </p>
             </div>
