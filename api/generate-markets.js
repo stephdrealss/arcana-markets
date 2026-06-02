@@ -6,8 +6,8 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const CIRCLE_AGENT_WALLET_ID = process.env.CIRCLE_AGENT_WALLET_ID;
 const NEWS_API_KEY = '11b8bf7438ee486dbc17d2d4bf9e9cb0';
 
-const BLOCKCHAIN = 'ETH-SEPOLIA';
-const USDC_ADDRESS = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
+const BLOCKCHAIN = 'MATIC-AMOY';
+const USDC_ADDRESS = '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582';
 // Arcana Markets treasury — receives each agent bet (0.01 USDC per market)
 const MARKET_TREASURY = '0xb505c4ad888c05bc8c6f2bf237f57f2b1a11a0d2';
 const BET_AMOUNT = '0.01';
@@ -237,7 +237,7 @@ module.exports = async function handler(req, res) {
           state: txStatus.state,
           failed: txStatus.failed || false,
           explorerUrl: txStatus.txHash
-            ? `https://sepolia.etherscan.io/tx/${txStatus.txHash}`
+            ? `https://amoy.polygonscan.com/tx/${txStatus.txHash}`
             : null,
         };
       } catch (e) {
