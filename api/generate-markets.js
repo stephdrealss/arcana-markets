@@ -33,183 +33,90 @@ const EXPLORER_BY_CHAIN = {
 
 const SPORTS_HEADERS = { 'x-apisports-key': SPORTS_API_KEY };
 
-// Curated fallbacks used when the live API returns no fixtures
-function getFallbackFixtures() {
+function getHardcodedMarkets() {
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 30);
+  const endDateStr = endDate.toISOString().split('T')[0];
+
   return [
-    { sport: 'football', competition: 'FIFA World Cup 2026', home: 'Brazil', away: 'Serbia', date: '2026-06-20', status: 'NS', round: 'Group Stage' },
-    { sport: 'football', competition: 'FIFA World Cup 2026', home: 'Argentina', away: 'Iceland', date: '2026-06-21', status: 'NS', round: 'Group Stage' },
-    { sport: 'football', competition: 'FIFA World Cup 2026', home: 'France', away: 'Mexico', date: '2026-06-22', status: 'NS', round: 'Group Stage' },
-    { sport: 'football', competition: 'FIFA World Cup 2026', home: 'USA', away: 'England', date: '2026-06-23', status: 'NS', round: 'Group Stage' },
-    { sport: 'basketball', competition: 'NBA Finals 2026', home: 'Oklahoma City Thunder', away: 'Boston Celtics', date: '2026-06-05', status: 'NS', round: 'Game 1' },
-    { sport: 'basketball', competition: 'NBA Finals 2026', home: 'Boston Celtics', away: 'Oklahoma City Thunder', date: '2026-06-08', status: 'NS', round: 'Game 2' },
-    { sport: 'tennis', competition: 'French Open 2026 (Roland Garros)', home: 'Novak Djokovic', away: 'Carlos Alcaraz', date: '2026-06-03', status: 'NS', round: 'Quarterfinal' },
-    { sport: 'tennis', competition: 'French Open 2026 (Roland Garros)', home: 'Iga Swiatek', away: 'Marta Kostyuk', date: '2026-06-05', status: 'NS', round: 'Semifinal' },
-  ];
-}
-
-async function fetchSportsFixtures() {
-  // FIFA World Cup 2026 (league 1), NBA (league 12), French Open / Roland Garros (tournament 2)
-  const [fifaRes, nbaRes, tennisRes] = await Promise.allSettled([
-    fetch('https://v3.football.api-sports.io/fixtures?league=1&season=2026&next=8', { headers: SPORTS_HEADERS }),
-    fetch('https://v3.basketball.api-sports.io/games?league=12&season=2025-2026&next=5', { headers: SPORTS_HEADERS }),
-    fetch('https://v1.tennis.api-sports.io/games?tournament=2&season=2026', { headers: SPORTS_HEADERS }),
-  ]);
-
-  const fixtures = [];
-
-  // — FIFA World Cup 2026 —
-  if (fifaRes.status === 'fulfilled') {
-    try {
-      const data = await fifaRes.value.json();
-      for (const f of (data.response || []).slice(0, 4)) {
-        const home = f.teams?.home?.name;
-        const away = f.teams?.away?.name;
-        if (home && away) {
-          fixtures.push({
-            sport: 'football',
-            competition: 'FIFA World Cup 2026',
-            home,
-            away,
-            date: (f.fixture?.date || '').slice(0, 10),
-            status: f.fixture?.status?.short || 'NS',
-            round: f.league?.round || 'Group Stage',
-            homeGoals: f.goals?.home,
-            awayGoals: f.goals?.away,
-          });
-        }
-      }
-    } catch (_) {}
-  }
-
-  // — NBA Finals 2026 —
-  if (nbaRes.status === 'fulfilled') {
-    try {
-      const data = await nbaRes.value.json();
-      for (const g of (data.response || []).slice(0, 3)) {
-        const home = g.teams?.home?.name;
-        const away = g.teams?.away?.name;
-        if (home && away) {
-          fixtures.push({
-            sport: 'basketball',
-            competition: 'NBA Finals 2026',
-            home,
-            away,
-            date: (g.date?.start || '').slice(0, 10),
-            status: g.status?.short || 'NS',
-            round: g.stage || 'Finals',
-            homeScore: g.scores?.home?.points,
-            awayScore: g.scores?.away?.points,
-          });
-        }
-      }
-    } catch (_) {}
-  }
-
-  // — French Open 2026 (Roland Garros) —
-  if (tennisRes.status === 'fulfilled') {
-    try {
-      const data = await tennisRes.value.json();
-      for (const m of (data.response || []).slice(0, 3)) {
-        // API-Sports tennis uses player_1/player_2 or players array depending on version
-        const p1 = m.players?.[0]?.player?.name ?? m.player_1?.name ?? m.home?.name;
-        const p2 = m.players?.[1]?.player?.name ?? m.player_2?.name ?? m.away?.name;
-        if (p1 && p2) {
-          fixtures.push({
-            sport: 'tennis',
-            competition: 'French Open 2026 (Roland Garros)',
-            home: p1,
-            away: p2,
-            date: (m.date || m.time?.date || '').slice(0, 10),
-            status: m.status?.short ?? (typeof m.status === 'string' ? m.status : 'NS'),
-            round: m.round?.name ?? m.stage?.name ?? '',
-          });
-        }
-      }
-    } catch (_) {}
-  }
-
-  // Pad with fallbacks if we got fewer than 5 real fixtures
-  if (fixtures.length < 5) {
-    const fallbacks = getFallbackFixtures();
-    const needed = 5 - fixtures.length;
-    fixtures.push(...fallbacks.slice(0, needed));
-  }
-
-  console.log(`[generate-markets] Sports fixtures: ${fixtures.length} total (football:${fixtures.filter(f=>f.sport==='football').length}, basketball:${fixtures.filter(f=>f.sport==='basketball').length}, tennis:${fixtures.filter(f=>f.sport==='tennis').length})`);
-  return fixtures;
-}
-
-async function generateMarketsWithAI(fixtures) {
-  const fixtureList = fixtures.slice(0, 8).map((f, i) => {
-    const liveTag = ['1H','2H','HT','ET','P','LIVE'].includes(f.status) ? ' [LIVE]' : '';
-    const scoreTag = f.homeGoals != null ? ` (${f.homeGoals}–${f.awayGoals})` : f.homeScore != null ? ` (${f.homeScore}–${f.awayScore})` : '';
-    const roundTag = f.round ? ` — ${f.round}` : '';
-    return `${i + 1}. [${f.competition}${roundTag}] ${f.home} vs ${f.away} · ${f.date}${scoreTag}${liveTag}`;
-  }).join('\n');
-
-  const prompt = `You are a prediction market creator for a decentralized finance platform. Based on these real sports fixtures, generate exactly 5 YES/NO prediction markets suitable for on-chain betting.
-
-Sports Fixtures:
-${fixtureList}
-
-Generate 5 prediction markets as a JSON array. Each object must have:
-- "id": "market_1" through "market_5"
-- "question": a specific YES/NO question such as "Will Brazil beat Argentina in the FIFA World Cup 2026 Group Stage?" or "Will Djokovic win the French Open 2026 Quarterfinal?" or "Will OKC Thunder win Game 1 of the NBA Finals 2026?"
-- "category": "sports"
-- "headline": concise fixture description e.g. "Brazil vs Argentina · FIFA World Cup 2026 · Jun 20"
-- "aiPrediction": "YES" or "NO" — your confident prediction
-- "confidence": integer 50–95 (your prediction confidence percentage)
-- "betAmount": "0.01"
-- "reasoning": one sentence based on team/player form, head-to-head record, or tournament context
-
-Respond with ONLY the JSON array, no markdown, no explanation.`;
-
-  if (ANTHROPIC_API_KEY) {
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1200,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
-      const data = await res.json();
-      const text = data?.content?.[0]?.text || '';
-      const match = text.match(/\[[\s\S]*\]/);
-      if (match) {
-        const parsed = JSON.parse(match[0]);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(0, 5);
-      }
-    } catch (_) {}
-  }
-
-  // Deterministic fallback when no Anthropic key or parse fails
-  return fixtures.slice(0, 5).map((f, i) => {
-    let question;
-    if (f.sport === 'tennis') {
-      question = `Will ${f.home} win the ${f.competition}${f.round ? ' ' + f.round : ''}?`;
-    } else if (f.sport === 'basketball') {
-      question = `Will the ${f.home} beat the ${f.away} in the ${f.competition}${f.round ? ' ' + f.round : ''}?`;
-    } else {
-      question = `Will ${f.home} beat ${f.away} in the ${f.competition}${f.round ? ' ' + f.round : ''}?`;
-    }
-    return {
-      id: `market_${i + 1}`,
-      question,
+    {
+      id: 'market_1',
+      question: 'Will England win the FIFA World Cup 2026?',
       category: 'sports',
-      headline: `${f.home} vs ${f.away} · ${f.competition} · ${f.date}`,
-      aiPrediction: i % 2 === 0 ? 'YES' : 'NO',
-      confidence: 55 + i * 7,
+      headline: 'England · FIFA World Cup 2026',
+      aiPrediction: 'NO',
+      confidence: 72,
       betAmount: BET_AMOUNT,
-      reasoning: `Based on recent form and historical head-to-head record in ${f.competition}.`,
-    };
-  });
+      reasoning: 'England have strong contenders but historically struggle in major tournaments despite recent form improvements.',
+      endDate: endDateStr,
+    },
+    {
+      id: 'market_2',
+      question: 'Will Brazil beat Argentina in the FIFA World Cup 2026?',
+      category: 'sports',
+      headline: 'Brazil vs Argentina · FIFA World Cup 2026',
+      aiPrediction: 'YES',
+      confidence: 58,
+      betAmount: BET_AMOUNT,
+      reasoning: 'Brazil have historically dominated head-to-head matchups with Argentina in World Cup play.',
+      endDate: endDateStr,
+    },
+    {
+      id: 'market_3',
+      question: 'Will France reach the FIFA World Cup 2026 final?',
+      category: 'sports',
+      headline: 'France · FIFA World Cup 2026',
+      aiPrediction: 'YES',
+      confidence: 65,
+      betAmount: BET_AMOUNT,
+      reasoning: 'France are among the top favourites with a star-studded squad and recent World Cup experience.',
+      endDate: endDateStr,
+    },
+    {
+      id: 'market_4',
+      question: 'Will Manchester City win the FIFA Club World Cup 2026?',
+      category: 'sports',
+      headline: 'Manchester City · FIFA Club World Cup 2026 (starts Jun 15)',
+      aiPrediction: 'YES',
+      confidence: 60,
+      betAmount: BET_AMOUNT,
+      reasoning: 'Man City enter as one of the strongest European clubs with a deep and balanced squad.',
+      endDate: endDateStr,
+    },
+    {
+      id: 'market_5',
+      question: 'Will Real Madrid beat Chelsea in the FIFA Club World Cup 2026?',
+      category: 'sports',
+      headline: 'Real Madrid vs Chelsea · FIFA Club World Cup 2026 (starts Jun 15)',
+      aiPrediction: 'YES',
+      confidence: 68,
+      betAmount: BET_AMOUNT,
+      reasoning: 'Real Madrid have superior Champions League pedigree and tournament experience over Chelsea.',
+      endDate: endDateStr,
+    },
+    {
+      id: 'market_6',
+      question: 'Will Bitcoin hit $150,000 before ' + endDateStr + '?',
+      category: 'crypto',
+      headline: 'Bitcoin · $150K Target',
+      aiPrediction: 'YES',
+      confidence: 55,
+      betAmount: BET_AMOUNT,
+      reasoning: 'Bitcoin is trading well above previous cycle highs with strong institutional demand driving momentum.',
+      endDate: endDateStr,
+    },
+    {
+      id: 'market_7',
+      question: 'Will Ethereum reach $10,000 before ' + endDateStr + '?',
+      category: 'crypto',
+      headline: 'Ethereum · $10K Target',
+      aiPrediction: 'NO',
+      confidence: 62,
+      betAmount: BET_AMOUNT,
+      reasoning: 'ETH faces headwinds from competing L1s and the $10K target would require a significant supply-side shift.',
+      endDate: endDateStr,
+    },
+  ];
 }
 
 async function getCipherText() {
@@ -332,16 +239,13 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // Step 1 — Fetch live/upcoming fixtures from API-Sports (World Cup, NBA Finals, French Open)
-    const fixtures = await fetchSportsFixtures();
+    // Step 1 — Build curated markets (FIFA WC 2026, Club WC 2026, Crypto)
+    const markets = getHardcodedMarkets();
 
-    // Step 2 — Generate 5 YES/NO prediction markets with AI
-    const markets = await generateMarketsWithAI(fixtures);
-
-    // Step 3 — Reuse existing agent wallet or create a new one
+    // Step 2 — Reuse existing agent wallet or create a new one
     const { wallet: agentWallet, isNew } = await getOrCreateAgentWallet();
 
-    // Step 4 — Request testnet tokens only for brand-new wallets
+    // Step 3 — Request testnet tokens only for brand-new wallets
     const faucetResult = isNew ? await requestTestnetTokens(agentWallet.address) : null;
 
     const walletBlockchain = agentWallet.blockchain || DEFAULT_BLOCKCHAIN;
@@ -377,9 +281,10 @@ module.exports = async function handler(req, res) {
         faucetRequested: !!faucetResult,
         fundWalletUrl: 'https://faucet.circle.com',
       },
-      sportsData: {
-        fixturesFound: fixtures.length,
-        sources: ['FIFA World Cup 2026', 'NBA Finals 2026', 'French Open 2026 (Roland Garros)'],
+      marketsData: {
+        marketsGenerated: marketResults.length,
+        sources: ['FIFA World Cup 2026', 'FIFA Club World Cup 2026', 'Crypto'],
+        endDate: markets[0]?.endDate || null,
       },
       markets: marketResults,
       summary: {

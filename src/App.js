@@ -362,11 +362,8 @@ const ALL_MARKETS = [
   {id:7,title:"Arc TVL surpasses $500M by end of 2026?",cat:"Arc",yes:0.44,chg:+0.03,vol:"2,300,000",ends:"Dec 31 2026"},
   {id:8,title:"Arc-native DEX launches with $10M+ TVL?",cat:"Arc",yes:0.58,chg:+0.05,vol:"1,800,000",ends:"Dec 31 2026"},
   {id:9,title:"Arc Architects Program reaches 5K members?",cat:"Arc",yes:0.66,chg:+0.07,vol:"980,000",ends:"Dec 31 2026",hot:true},
-  {id:10,title:"Real Madrid wins 2025-26 Champions League?",cat:"Sports",yes:0.31,chg:-0.04,vol:"5,200,000",ends:"Jun 1 2026"},
-  {id:11,title:"Golden State Warriors make 2026 NBA Playoffs?",cat:"Sports",yes:0.22,chg:-0.08,vol:"3,100,000",ends:"Apr 15 2026"},
   {id:12,title:"Canelo Alvarez wins next fight by KO?",cat:"Sports",yes:0.54,chg:+0.03,vol:"1,700,000",ends:"Sep 30 2026"},
   {id:13,title:"Lewis Hamilton wins a race in 2026 F1 season?",cat:"Sports",yes:0.48,chg:+0.05,vol:"2,400,000",ends:"Nov 30 2026"},
-  {id:14,title:"Tiger Woods plays in 2026 Masters?",cat:"Sports",yes:0.19,chg:-0.06,vol:"4,200,000",ends:"Apr 12 2026"},
   {id:15,title:"Lionel Messi retires before end of 2026?",cat:"Sports",yes:0.08,chg:-0.01,vol:"2,900,000",ends:"Dec 31 2026"},
   {id:24,title:"US passes comprehensive crypto legislation?",cat:"Politics",yes:0.41,chg:+0.03,vol:"6,700,000",ends:"Dec 31 2026"},
   {id:29,title:"G7 nation adopts a CBDC by end of 2026?",cat:"Politics",yes:0.27,chg:-0.02,vol:"3,800,000",ends:"Dec 31 2026"},
@@ -379,28 +376,16 @@ const ALL_MARKETS = [
   {id:35,title:"Apple Vision Pro 2 announced in 2026?",cat:"Tech & AI",yes:0.43,chg:-0.02,vol:"2,200,000",ends:"Dec 31 2026"},
   {id:36,title:"AI-generated content banned on a major platform?",cat:"Tech & AI",yes:0.18,chg:-0.05,vol:"3,400,000",ends:"Dec 31 2026"},
   {id:37,title:"Elon Musk's xAI surpasses $100B valuation?",cat:"Tech & AI",yes:0.52,chg:+0.06,vol:"4,100,000",ends:"Dec 31 2026"},
-  {id:27,title:"Taylor Swift announces new album before June 2026?",cat:"Culture",yes:0.34,chg:-0.03,vol:"5,800,000",ends:"Jun 1 2026"},
-  {id:38,title:"Netflix gains more than 20M subscribers in Q1?",cat:"Culture",yes:0.61,chg:+0.04,vol:"2,700,000",ends:"Apr 30 2026"},
   {id:39,title:"A Marvel film tops $2B at the box office in 2026?",cat:"Culture",yes:0.39,chg:-0.02,vol:"3,100,000",ends:"Dec 31 2026"},
   {id:40,title:"NASA Artemis Moon landing happens before 2027?",cat:"Science",yes:0.17,chg:-0.08,vol:"4,500,000",ends:"Dec 31 2026"},
   {id:41,title:"A lab-grown meat product hits major US grocery chain?",cat:"Science",yes:0.29,chg:+0.03,vol:"1,900,000",ends:"Dec 31 2026"},
   {id:28,title:"Global average temp sets new record high in 2026?",cat:"Science",yes:0.71,chg:+0.05,vol:"2,600,000",ends:"Dec 31 2026"},
   {id:42,title:"Quantum computer breaks RSA-2048 encryption?",cat:"Science",yes:0.09,chg:-0.02,vol:"1,400,000",ends:"Dec 31 2026"},
-  {id:47,title:"Will BTC close above $80K in 3 days?",cat:"Crypto",yes:0.58,chg:+0.06,vol:"1,240,000",ends:"Apr 28 2026",hot:true},
-  {id:60,title:"Will ETH close above $2,400 in 7 days?",cat:"Crypto",yes:0.45,chg:+0.04,vol:"870,000",ends:"May 2 2026"},
-  {id:52,title:"Will SOL close above $90 in 7 days?",cat:"Crypto",yes:0.51,chg:+0.03,vol:"640,000",ends:"May 2 2026"},
-  {id:53,title:"Will Arsenal reach the UCL Final?",cat:"Sports",yes:0.39,chg:-0.05,vol:"2,100,000",ends:"May 7 2026"},
-  {id:54,title:"Will Paris beat Bayern in the UCL Semi?",cat:"Sports",yes:0.47,chg:+0.02,vol:"1,870,000",ends:"May 7 2026"},
-  {id:55,title:"Will Trump sign a crypto bill before June?",cat:"Politics",yes:0.31,chg:+0.04,vol:"3,400,000",ends:"May 31 2026",trending:true},
-  {id:56,title:"Will Met Gala go viral for a crypto outfit?",cat:"Culture",yes:0.22,chg:-0.02,vol:"480,000",ends:"May 6 2026"},
-  {id:57,title:"Will Google announce new Gemini at I/O?",cat:"Tech & AI",yes:0.82,chg:+0.07,vol:"1,560,000",ends:"May 22 2026",hot:true},
-  {id:58,title:"Will Cannes open with an AI-generated film?",cat:"Culture",yes:0.18,chg:-0.03,vol:"320,000",ends:"May 13 2026"},
-  {id:59,title:"Will BTC dominance stay above 55% in 24h?",cat:"Crypto",yes:0.71,chg:+0.05,vol:"760,000",ends:"Apr 26 2026",trending:true},
 ];
 
 const CATS=["All","Trending","Crypto","Arc","Sports","Politics","Macro","Tech & AI","Culture","Science"];
 function parseEndDate(s){const hasYear=/20\d\d/.test(s||"");return new Date(hasYear?s:(s||"")+" 2026");}
-const TOP_MOVERS=[...ALL_MARKETS].filter(m=>{const d=parseEndDate(m.ends);return isNaN(d.getTime())||d>new Date();}).sort((a,b)=>Math.abs(b.chg)-Math.abs(a.chg)).slice(0,4);
+const TOP_MOVERS=[...ALL_MARKETS].filter(m=>{const d=parseEndDate(m.ends);return !isNaN(d.getTime())&&d>new Date();}).sort((a,b)=>Math.abs(b.chg)-Math.abs(a.chg)).slice(0,4);
 const pct=v=>Math.round(v*100);
 
 // ── SPARK LINE ────────────────────────────────────────────────────────────────
@@ -1193,14 +1178,20 @@ function AIMarketsSection({ t, onTrade }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const toMarket = (m) => ({
-    id: parseInt(m.id.replace('market_', '')) + 1000,
-    title: m.question,
-    cat: m.category === 'sports' ? 'Sports' : 'Crypto',
-    yes: m.aiPrediction === 'YES' ? m.confidence / 100 : (100 - m.confidence) / 100,
-    chg: 0, vol: '0', ends: 'Dec 31 2026',
-    hot: false, trending: false,
-  });
+  const toMarket = (m) => {
+    const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const ends=m.endDate
+      ?(([y,mo,d])=>`${MONTHS[parseInt(mo)-1]} ${parseInt(d)} ${y}`)(m.endDate.split('-'))
+      :'Jul 3 2026';
+    return {
+      id: parseInt(m.id.replace('market_', '')) + 1000,
+      title: m.question,
+      cat: m.category === 'sports' ? 'Sports' : 'Crypto',
+      yes: m.aiPrediction === 'YES' ? m.confidence / 100 : (100 - m.confidence) / 100,
+      chg: 0, vol: '0', ends,
+      hot: false, trending: false,
+    };
+  };
 
   return (
     <div style={{ marginBottom: 40 }}>
@@ -1282,7 +1273,12 @@ export default function ArcanaMarkets(){
   const [q,setQ]=useState("");
   const [active,setActive]=useState(null);
   const [tradeSide,setTradeSide]=useState(null);
-  const [account,setAccount]=useState(null);
+  const [account,setAccount]=useState(()=>{
+    if(LS.get("arcana_user_disconnected",false))return null;
+    const savedType=LS.get("arcana_wallet_type",null);
+    if(savedType==="circle"){const w=LS.get("arcana_last_wallet",null);if(w)return w;}
+    return null;
+  });
   const [walletType,setWalletType]=useState(()=>LS.get("arcana_wallet_type",null));
   const [circleWalletId,setCircleWalletId]=useState(()=>LS.get("arcana_circle_wallet_id",null));
   const [usdcBalance,setUsdcBalance]=useState("0.00");
@@ -1441,7 +1437,7 @@ export default function ArcanaMarkets(){
 
   const refreshResolutions=()=>setResolutions(getResolutions());
 
-  const now=new Date(); const filtered=ALL_MARKETS.filter(m=>{const d=parseEndDate(m.ends);return isNaN(d.getTime())||d>now;}).filter(m=>cat==="Trending"?m.trending:cat==="All"?true:m.cat===cat).filter(m=>!q||m.title.toLowerCase().includes(q.toLowerCase()));
+  const now=new Date(); const filtered=ALL_MARKETS.filter(m=>{const d=parseEndDate(m.ends);return !isNaN(d.getTime())&&d>now;}).filter(m=>cat==="Trending"?m.trending:cat==="All"?true:m.cat===cat).filter(m=>!q||m.title.toLowerCase().includes(q.toLowerCase()));
   const tick=ALL_MARKETS[tickIdx];
 
   const NAV_TABS=["Markets","Portfolio",...(isOwner?["Admin"]:[]),"Leaderboard","Activity"];
