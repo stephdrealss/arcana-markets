@@ -1032,6 +1032,11 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
     if(parseFloat(usdcBalance)<parseFloat(amt)){setError(`Insufficient USDC. You have ${usdcBalance}`);return;}
     setLoading(true);setError("");
     try{
+      setLoadingMsg("Checking market...");
+      const mc=await getOnChainMarket(m.id);
+      const nowSec=Math.floor(Date.now()/1000);
+      if(mc&&mc.endTime>0&&mc.endTime<nowSec){throw new Error("market has ended");}
+      if(mc?.cancelled){throw new Error("This market has been cancelled.");}
       if(walletType==="circle"){
         const usdcAmt=String(Math.round(parseFloat(amt)*1e6));
         setLoadingMsg("Step 1/2: Approving USDC via Circle...");
@@ -1288,6 +1293,7 @@ export default function ArcanaMarkets(){
   const [tickIdx,setTickIdx]=useState(0);
   const [resolutions,setResolutions]=useState(()=>getResolutions());
   const [isOwner,setIsOwner]=useState(false);
+  const [expiredOnChain,setExpiredOnChain]=useState(new Set());
   const [stats,setStats]=useState(()=>buildStats([]));const [dropdownOpen,setDropdownOpen]=useState(false); const [copied,setCopied]=useState(false); const [depositOpen,setDepositOpen]=useState(false); const [bridgeOpen,setBridgeOpen]=useState(false);
 
   const t=dark?THEMES.dark:THEMES.light;
@@ -1414,6 +1420,20 @@ export default function ArcanaMarkets(){
     return()=>clearInterval(timer);
   },[]);
 
+  // Batch-check on-chain endTimes and hide markets the contract would reject
+  useEffect(()=>{
+    const checkOnChainExpiry=async()=>{
+      const nowSec=Math.floor(Date.now()/1000);
+      const results=await Promise.all(ALL_MARKETS.map(m=>getOnChainMarket(m.id).catch(()=>null)));
+      const expired=new Set();
+      results.forEach((data,i)=>{
+        if(data&&data.endTime>0&&data.endTime<nowSec) expired.add(ALL_MARKETS[i].id);
+      });
+      if(expired.size>0) setExpiredOnChain(expired);
+    };
+    checkOnChainExpiry();
+  },[]);
+
   const addPosition=useCallback((trade)=>{
     if(!account)return;
     const key=account.toLowerCase();
@@ -1437,7 +1457,7 @@ export default function ArcanaMarkets(){
 
   const refreshResolutions=()=>setResolutions(getResolutions());
 
-  const now=new Date(); const filtered=ALL_MARKETS.filter(m=>{const d=parseEndDate(m.ends);return !isNaN(d.getTime())&&d>now;}).filter(m=>cat==="Trending"?m.trending:cat==="All"?true:m.cat===cat).filter(m=>!q||m.title.toLowerCase().includes(q.toLowerCase()));
+  const now=new Date(); const filtered=ALL_MARKETS.filter(m=>{const d=parseEndDate(m.ends);return !isNaN(d.getTime())&&d>now;}).filter(m=>!expiredOnChain.has(m.id)).filter(m=>cat==="Trending"?m.trending:cat==="All"?true:m.cat===cat).filter(m=>!q||m.title.toLowerCase().includes(q.toLowerCase()));
   const tick=ALL_MARKETS[tickIdx];
 
   const NAV_TABS=["Markets","Portfolio",...(isOwner?["Admin"]:[]),"Leaderboard","Activity"];
