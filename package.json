@@ -1,19 +1,31 @@
 {
-  "name": "react",
+  "name": "arcana-markets",
   "version": "0.0.0",
   "private": true,
   "dependencies": {
-    "ethers": "5.7.2",
+    "@circle-fin/adapter-circle-wallets": "^1.2.0",
+    "@circle-fin/app-kit": "latest",
+    "@circle-fin/developer-controlled-wallets": "^10.1.0",
+    "@openzeppelin/contracts": "^4.9.6",
+    "@uma/core": "^2.62.2",
     "react": "^18.1.0",
-    "react-dom": "^18.1.0",     "@circle-fin/app-kit": "latest",     "@circle-fin/adapter-circle-wallets": "^1.2.0",     "@circle-fin/developer-controlled-wallets": "^10.1.0"
+    "react-dom": "^18.1.0"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test --env=jsdom",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.ts --network arcTestnet"
   },
   "devDependencies": {
-    "react-scripts": "latest"
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "dotenv": "^16.4.0",
+    "ethers": "^6.0.0",
+    "hardhat": "^2.22.0",
+    "react-scripts": "latest",
+    "ts-node": "^10.9.0",
+    "typescript": "^5"
   }
 }
