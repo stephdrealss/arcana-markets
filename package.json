@@ -18,7 +18,7 @@
     "eject": "react-scripts eject",
     "compile": "hardhat compile",
     "deploy": "hardhat run scripts/deploy.ts --network arcTestnet",
-    "deploy:all": "hardhat run scripts/deployAll.ts --network arcTestnet"
+    "deploy:circle": "ts-node scripts/deployAll.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
