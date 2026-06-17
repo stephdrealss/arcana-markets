@@ -17,7 +17,8 @@
     "test": "react-scripts test --env=jsdom",
     "eject": "react-scripts eject",
     "compile": "hardhat compile",
-    "deploy": "hardhat run scripts/deploy.ts --network arcTestnet"
+    "deploy": "hardhat run scripts/deploy.ts --network arcTestnet",
+    "deploy:all": "hardhat run scripts/deployAll.ts --network arcTestnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
