@@ -76,7 +76,7 @@ contract ArcanaMarkets {
 
         // Pre-authorised admins
         _addAdmin(0x3B4a7deb1274A6F802f45455c6A3998a1D8384d9);
-        _addAdmin(0x89f9EAeF8CfF2fAfE0664b5944AD3197A74588Bf);
+        _addAdmin(0x89f9eAEf8CFf2fAfE0664B5944aD3197A74588Bf);
     }
 
     // ── Admin management (owner only) ─────────────────────────────────────────
