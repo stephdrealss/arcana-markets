@@ -15,8 +15,6 @@ const ABI = [
 const MARKETS = [
   { title: 'Will England win FIFA World Cup 2026?',                     category: 'Sports' },
   { title: 'Will Brazil beat Argentina in FIFA World Cup 2026?',        category: 'Sports' },
-  { title: 'Will Manchester City win FIFA Club World Cup 2026?',        category: 'Sports' },
-  { title: 'Will Real Madrid beat Chelsea in FIFA Club World Cup 2026?',category: 'Sports' },
   { title: 'Will Bitcoin hit $150,000 by end of 2026?',                 category: 'Crypto' },
 ];
 
