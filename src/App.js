@@ -1178,7 +1178,13 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
 }
 
 // ── LIVE MARKETS GRID — reads directly from the v2 contract, no other source ──
-function LiveMarketsGrid({ t, markets, loading, resolutions, onTrade }) {
+const CATS=["All","Trending","Crypto","Arc","Sports","Politics","Macro","Tech & AI","Culture","Science"];
+
+function LiveMarketsGrid({ t, markets, loading, resolutions, onTrade, cat, setCat, q, setQ }) {
+  const filtered = markets
+    .filter(m => cat==="All" ? true : cat==="Trending" ? m.trending : m.cat===cat)
+    .filter(m => !q || m.title.toLowerCase().includes(q.toLowerCase()));
+
   return (
     <div style={{ marginBottom: 40 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
@@ -1191,6 +1197,19 @@ function LiveMarketsGrid({ t, markets, loading, resolutions, onTrade }) {
           <p style={{ fontSize: 12, color: t.textMuted, fontFamily: 'monospace', margin: 0 }}>
             Read directly from the ArcanaMarkets contract — marketCount() + markets(id)
           </p>
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"center",flexWrap:"wrap"}} className="filter-row">
+        <div style={{display:"flex",gap:5,flex:1,flexWrap:"wrap"}}>
+          {CATS.map(c=>(
+            <button key={c} onClick={()=>setCat(c)}
+              style={{padding:"6px 13px",background:cat===c?t.blue:t.surface,border:`1px solid ${cat===c?t.blue:t.border}`,borderRadius:20,color:cat===c?"#fff":t.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{c}</button>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8,flexShrink:0}}>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search..."
+            style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:"7px 12px",color:t.text,fontSize:13,outline:"none",width:160}}/>
         </div>
       </div>
 
@@ -1216,8 +1235,12 @@ function LiveMarketsGrid({ t, markets, loading, resolutions, onTrade }) {
       )}
 
       {markets.length > 0 && (
+        <div style={{marginBottom:16,fontSize:12,color:t.textMuted,fontFamily:"monospace"}}>{filtered.length} markets</div>
+      )}
+
+      {markets.length > 0 && filtered.length > 0 && (
         <div className="markets-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-          {markets.map(m => {
+          {filtered.map(m => {
             const nowSec = Math.floor(Date.now() / 1000);
             const isEnded = m.endTime > 0 && m.endTime < nowSec && !m.resolved && !m.cancelled;
             return (
@@ -1235,6 +1258,10 @@ function LiveMarketsGrid({ t, markets, loading, resolutions, onTrade }) {
           })}
         </div>
       )}
+
+      {markets.length > 0 && filtered.length === 0 && (
+        <div style={{textAlign:"center",padding:"60px 0",color:t.textMuted}}>No markets found</div>
+      )}
     </div>
   );
 }
@@ -1243,6 +1270,8 @@ function LiveMarketsGrid({ t, markets, loading, resolutions, onTrade }) {
 export default function ArcanaMarkets(){
   const [dark,setDark]=useState(()=>LS.get("arcana_theme",false));
   const [page,setPage]=useState("Markets");
+  const [cat,setCat]=useState("All");
+  const [q,setQ]=useState("");
   const [active,setActive]=useState(null);
   const [tradeSide,setTradeSide]=useState(null);
   const [account,setAccount]=useState(()=>{
@@ -1587,7 +1616,7 @@ export default function ArcanaMarkets(){
               </div>
             </div>
 
-            <LiveMarketsGrid t={t} markets={chainMarkets} loading={marketsLoading} resolutions={resolutions} onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);}}/>
+            <LiveMarketsGrid t={t} markets={chainMarkets} loading={marketsLoading} resolutions={resolutions} onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);}} cat={cat} setCat={setCat} q={q} setQ={setQ}/>
 
             <div style={{marginTop:52,background:t.navy,borderRadius:16,padding:"30px 34px",display:"flex",gap:24,alignItems:"center",flexWrap:"wrap"}}>
               <div style={{width:48,height:48,borderRadius:14,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
