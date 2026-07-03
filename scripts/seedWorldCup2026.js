@@ -32,7 +32,7 @@ for (const rawLine of fs.readFileSync(__dirname + '/../.env.local', 'utf8').spli
 const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY || '';
 const ENTITY_SECRET  = process.env.CIRCLE_ENTITY_SECRET || '';
 const ADMIN_PK       = process.env.ADMIN_PRIVATE_KEY || '';
-const CONTRACT       = '0x443a47eF1025e047879b1BA08c94e6dedB354D54';
+const CONTRACT       = '0x44c5445C01f1A0FD5D7AA661776327Ac11872889';
 const BLOCKCHAIN     = 'ARC-TESTNET';
 const CIRCLE_BASE    = 'https://api.circle.com/v1/w3s';
 const ARC_RPC        = 'https://rpc.testnet.arc.network';
@@ -44,7 +44,8 @@ const CONTRACT_ABI = [
 ];
 
 // ── Markets to cancel (unresolvable — event doesn't exist) ──────────────────
-const CANCEL_IDS = [77, 78];
+// None on this contract: 77/78 were on the old v1 contract and stay there.
+const CANCEL_IDS = [];
 
 // ── Markets to create ────────────────────────────────────────────────────────
 const CRITERIA_MATCH = 'Beat = advancing by any means, incl. penalties. Void + full refund if match not played. Resolves per official FIFA result.';

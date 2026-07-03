@@ -9,7 +9,7 @@
 const { ethers } = require('ethers');
 
 const RPC              = 'https://rpc.testnet.arc.network';
-const CONTRACT_ADDRESS = '0x443a47eF1025e047879b1BA08c94e6dedB354D54';
+const CONTRACT_ADDRESS = '0x44c5445C01f1A0FD5D7AA661776327Ac11872889';
 const WC_LEAGUE_ID     = 1;
 const SPORTS_API_KEY   = process.env.SPORTS_API_KEY || '40d401329899ef48045c6660a77573f9';
 
