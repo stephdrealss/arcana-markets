@@ -360,10 +360,6 @@ const ALL_MARKETS = [
   {id:75,title:"Will England win FIFA World Cup 2026?",cat:"Sports",yes:0.22,chg:+0.03,vol:"0",ends:"Jul 3 2026"},
   {id:76,title:"Will Brazil beat Argentina in FIFA World Cup 2026?",cat:"Sports",yes:0.55,chg:+0.04,vol:"0",ends:"Jul 3 2026"},
   {id:79,title:"Will Bitcoin hit $150,000 by end of 2026?",cat:"Crypto",yes:0.48,chg:+0.06,vol:"0",ends:"Jul 3 2026",trending:true},
-  // NOT YET ON-CHAIN: createMarket reverted ("End time must be future") because
-  // closeTime is already in the past relative to today. Needs a real, still-future
-  // kickoff time before this can be seeded — do not renumber to a real chain id yet.
-  {id:80,title:"Will Portugal beat Croatia in the Round of 32?",cat:"Sports",yes:0.58,chg:0,vol:"0",ends:"Jul 2 2026",closeTime:"2026-07-02T19:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played.",trending:true},
   {id:1,title:"Will Argentina beat Cape Verde in the Round of 32?",cat:"Sports",yes:0.82,chg:0,vol:"0",ends:"Jul 3 2026",closeTime:"2026-07-03T18:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played."},
   {id:2,title:"Will Australia beat Egypt in the Round of 32?",cat:"Sports",yes:0.40,chg:0,vol:"0",ends:"Jul 3 2026",closeTime:"2026-07-03T14:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played."},
   {id:3,title:"Will Colombia beat Ghana in the Round of 32?",cat:"Sports",yes:0.63,chg:0,vol:"0",ends:"Jul 3 2026",closeTime:"2026-07-03T21:30:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played."},
