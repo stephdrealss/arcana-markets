@@ -93,6 +93,42 @@ async function getContractOwner() {
   } catch { return null; }
 }
 
+// ── ALL MARKETS, READ DIRECTLY FROM THE V2 CONTRACT ───────────────────────────
+// Single source of truth: marketCount() + markets(id) on CONTRACT_ADDRESS.
+// No hardcoded/display-only markets — anything shown in the UI exists on-chain.
+async function fetchChainMarkets() {
+  const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  try {
+    const provider = new ethers.providers.JsonRpcProvider(ARC_RPC);
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+    const count = Number(await contract.marketCount());
+    const ids = Array.from({ length: count }, (_, i) => i + 1);
+    const raw = await Promise.all(ids.map(id => contract.markets(id).catch(() => null)));
+    return raw.filter(Boolean).map(m => {
+      const yesPool = Number(m.yesPool) / 1e6;
+      const noPool = Number(m.noPool) / 1e6;
+      const total = yesPool + noPool;
+      const endTime = Number(m.endTime);
+      const d = new Date(endTime * 1000);
+      return {
+        id: Number(m.id),
+        title: m.title,
+        cat: m.category,
+        yes: total > 0 ? yesPool / total : 0.5,
+        chg: 0,
+        vol: total.toFixed(2),
+        ends: `${MONTHS[d.getMonth()]} ${d.getDate()} ${d.getFullYear()}`,
+        closeTime: d.toISOString(),
+        endTime,
+        resolved: m.resolved,
+        cancelled: m.cancelled,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 // ── RESOLUTION STORE ──────────────────────────────────────────────────────────
 // Contract emits MarketResolved(marketId, yesWon) but doesn't expose yesWon as a getter.
 // We store it locally after admin resolves. In a future version this reads from event logs.
@@ -274,7 +310,7 @@ function buildLeaderboard(newTrades=[]) {
   return Object.values(merged).sort((a,b)=>b.trades-a.trades).map((row,i)=>({...row,rank:i+1,badge:i===0?"🥇":i===1?"🥈":i===2?"🥉":""}));
 }
 
-function buildStats(liveStats=null, newTrades=[]) {
+function buildStats(liveStats=null, newTrades=[], openMarketsCount=0) {
   const base = liveStats || CHAIN_STATS;
   const extraVol=(newTrades||[]).reduce((s,t)=>s+(parseFloat(t.usdc)||0),0);
   const totalVol=base.totalVolume+extraVol;
@@ -283,7 +319,7 @@ function buildStats(liveStats=null, newTrades=[]) {
     const already=LEADERBOARD_SEED.some(r=>r.fullAddr.toLowerCase()===(t.from||"").toLowerCase());
     return already?s:s+1;
   },0);
-  return {totalVolume:displayVol,traderCount:`${traders}`,openMarkets:`${ALL_MARKETS.length}`};
+  return {totalVolume:displayVol,traderCount:`${traders}`,openMarkets:`${openMarketsCount}`};
 }
 
 async function fetchLiveStats() {
@@ -351,24 +387,6 @@ const THEMES = {
     cardBorder:"rgba(255,255,255,0.07)",cardBorderHov:"#3B82F6",
   },
 };
-
-// AI/agent-generated markets only. Manual hand-authored markets removed;
-// FIFA Club World Cup 2026 (ids 77/78) removed — that event doesn't exist, unresolvable.
-// ids 80-88 are provisional pending on-chain creation; will be reconciled with the
-// real ids the contract assigns when scripts/seedWorldCup2026.ts is run (checkpoint).
-const ALL_MARKETS = [
-  {id:75,title:"Will England win FIFA World Cup 2026?",cat:"Sports",yes:0.22,chg:+0.03,vol:"0",ends:"Jul 3 2026"},
-  {id:76,title:"Will Brazil beat Argentina in FIFA World Cup 2026?",cat:"Sports",yes:0.55,chg:+0.04,vol:"0",ends:"Jul 3 2026"},
-  {id:79,title:"Will Bitcoin hit $150,000 by end of 2026?",cat:"Crypto",yes:0.48,chg:+0.06,vol:"0",ends:"Jul 3 2026",trending:true},
-  {id:1,title:"Will Argentina beat Cape Verde in the Round of 32?",cat:"Sports",yes:0.82,chg:0,vol:"0",ends:"Jul 3 2026",closeTime:"2026-07-03T18:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played."},
-  {id:2,title:"Will Australia beat Egypt in the Round of 32?",cat:"Sports",yes:0.40,chg:0,vol:"0",ends:"Jul 3 2026",closeTime:"2026-07-03T14:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played."},
-  {id:3,title:"Will Colombia beat Ghana in the Round of 32?",cat:"Sports",yes:0.63,chg:0,vol:"0",ends:"Jul 3 2026",closeTime:"2026-07-03T21:30:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played."},
-  {id:4,title:"Will the USA beat Belgium in the Round of 16?",cat:"Sports",yes:0.35,chg:0,vol:"0",ends:"Jul 6 2026",closeTime:"2026-07-06T12:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played. Kickoff time assumed noon ET pending confirmation; close time to be adjusted to actual kickoff."},
-  {id:5,title:"Will Mexico beat England in the Round of 16?",cat:"Sports",yes:0.30,chg:0,vol:"0",ends:"Jul 6 2026",closeTime:"2026-07-06T12:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played. Kickoff time assumed noon ET pending confirmation; close time to be adjusted to actual kickoff.",hot:true},
-  {id:6,title:"Will Argentina win the FIFA World Cup 2026?",cat:"Sports",yes:0.22,chg:0,vol:"0",ends:"Jul 19 2026",closeTime:"2026-07-19T15:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result, resolves after the Jul 19 final.",voidCondition:"Void — full refund if the tournament is not completed as scheduled."},
-  {id:7,title:"Will France reach the World Cup 2026 final?",cat:"Sports",yes:0.28,chg:0,vol:"0",ends:"Jul 19 2026",closeTime:"2026-07-19T15:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result, resolves after the Jul 19 final.",voidCondition:"Void — full refund if the tournament is not completed as scheduled."},
-  {id:8,title:"Will Messi win the World Cup 2026 Golden Boot?",cat:"Sports",yes:0.15,chg:0,vol:"0",ends:"Jul 19 2026",closeTime:"2026-07-19T15:00:00-04:00",resolutionSource:"Per the official FIFA Golden Boot award for the 2026 tournament, resolves after the Jul 19 final.",voidCondition:"Void — full refund if the tournament is not completed as scheduled."},
-];
 
 function parseEndDate(s){const hasYear=/20\d\d/.test(s||"");return new Date(hasYear?s:(s||"")+" 2026");}
 const pct=v=>Math.round(v*100);
@@ -438,7 +456,7 @@ function ClaimButton({marketId,isRefund,t,onDone}){
 }
 
 // ── ADMIN PANEL ───────────────────────────────────────────────────────────────
-function AdminPanel({t,account,onResolved}){
+function AdminPanel({t,account,onResolved,markets=[]}){
   const [resolveId,setResolveId]=useState("");
   const [outcome,setOutcome]=useState("YES");
   const [cancelId,setCancelId]=useState("");
@@ -525,7 +543,7 @@ function AdminPanel({t,account,onResolved}){
         {/* Market picker */}
         <div style={{fontSize:11,color:t.textMuted,fontFamily:"monospace",marginBottom:6}}>QUICK SELECT</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:5,maxHeight:100,overflowY:"auto"}}>
-          {ALL_MARKETS.map(m=>(
+          {markets.map(m=>(
             <button key={m.id} onClick={()=>setResolveId(String(m.id))}
               style={{padding:"3px 9px",background:resolveId===String(m.id)?t.purple:t.surfaceAlt,border:`1px solid ${t.border}`,borderRadius:5,fontSize:10,color:resolveId===String(m.id)?"#fff":t.textMuted,cursor:"pointer",fontFamily:"monospace"}}>
               #{m.id}
@@ -1159,69 +1177,24 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
   );
 }
 
-// ── AI MARKETS SECTION ───────────────────────────────────────────────────────
-function AIMarketsSection({ t, onTrade }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [generatedAt, setGeneratedAt] = useState(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/generate-markets', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-      const json = await res.json();
-      if (json.success) { setData(json); setGeneratedAt(new Date(json.generatedAt)); }
-      else setError(json.error || 'Failed to generate markets');
-    } catch { setError('Could not reach /api/generate-markets'); }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const toMarket = (m) => {
-    const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const ends=m.endDate
-      ?(([y,mo,d])=>`${MONTHS[parseInt(mo)-1]} ${parseInt(d)} ${y}`)(m.endDate.split('-'))
-      :'Jul 3 2026';
-    return {
-      id: parseInt(m.id.replace('market_', '')) + 1000,
-      title: m.question,
-      cat: m.category === 'sports' ? 'Sports' : 'Crypto',
-      yes: m.aiPrediction === 'YES' ? m.confidence / 100 : (100 - m.confidence) / 100,
-      chg: 0, vol: '0', ends,
-      hot: false, trending: false,
-    };
-  };
-
+// ── LIVE MARKETS GRID — reads directly from the v2 contract, no other source ──
+function LiveMarketsGrid({ t, markets, loading, resolutions, onTrade }) {
   return (
     <div style={{ marginBottom: 40 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <span style={{ fontSize: 18 }}>🤖</span>
-            <span style={{ fontSize: 16, fontWeight: 800, color: t.text }}>AI Markets</span>
-            <span style={{ fontSize: 9, fontWeight: 700, fontFamily: 'monospace', color: t.purple, background: t.purpleBg, border: `1px solid ${t.purpleBorder}`, padding: '2px 7px', borderRadius: 4, letterSpacing: 0.5 }}>LIVE · CIRCLE AGENT</span>
+            <span style={{ fontSize: 18 }}>◈</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: t.text }}>Markets</span>
+            <span style={{ fontSize: 9, fontWeight: 700, fontFamily: 'monospace', color: t.blue, background: t.blueDim, border: `1px solid ${t.blueBorder}`, padding: '2px 7px', borderRadius: 4, letterSpacing: 0.5 }}>ON-CHAIN · ARC TESTNET</span>
           </div>
           <p style={{ fontSize: 12, color: t.textMuted, fontFamily: 'monospace', margin: 0 }}>
-            Generated from top news · AI predictions · Agent wallet bets on ARC-TESTNET
-            {generatedAt && <span style={{ marginLeft: 8, opacity: 0.6 }}>· {generatedAt.toLocaleTimeString()}</span>}
+            Read directly from the ArcanaMarkets contract — marketCount() + markets(id)
           </p>
         </div>
-        <button onClick={load} disabled={loading}
-          style={{ padding: '6px 14px', background: t.purpleBg, border: `1px solid ${t.purpleBorder}`, borderRadius: 8, color: t.purple, fontSize: 11, fontFamily: 'monospace', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>
-          {loading ? '⏳ GENERATING...' : '↻ REFRESH'}
-        </button>
       </div>
 
-      {error && (
-        <div style={{ padding: '12px 16px', background: t.redBg, border: `1px solid ${t.redBorder}`, borderRadius: 10, fontSize: 12, color: t.red, fontFamily: 'monospace', marginBottom: 12 }}>
-          ✕ {error}
-        </div>
-      )}
-
-      {loading && !data && (
+      {loading && markets.length === 0 && (
         <div className="markets-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {[1,2,3,4,5].map(i => (
             <div key={i} style={{ background: t.surface, border: `1.5px solid ${t.border}`, borderRadius: 12, padding: 18, height: 320, opacity: 0.5 }}>
@@ -1236,29 +1209,28 @@ function AIMarketsSection({ t, onTrade }) {
         </div>
       )}
 
-      {data && (
+      {!loading && markets.length === 0 && (
+        <div style={{ padding: '12px 16px', background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 10, fontSize: 12, color: t.textMuted, fontFamily: 'monospace' }}>
+          No markets found on-chain yet.
+        </div>
+      )}
+
+      {markets.length > 0 && (
         <div className="markets-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-          {data.markets.map(m => {
-            const hasTx = m.bet?.state === 'COMPLETE' && m.bet?.txHash;
-            const headline = m.headline.length > 60 ? m.headline.slice(0, 60) + '…' : m.headline;
-            const liveInfo = hasTx
-              ? `✓ Agent bet · ↗ ArcScan`
-              : `🤖 ${headline}`;
+          {markets.map(m => {
+            const nowSec = Math.floor(Date.now() / 1000);
+            const isEnded = m.endTime > 0 && m.endTime < nowSec && !m.resolved && !m.cancelled;
             return (
-              <div key={m.id} style={{ position: 'relative' }} className="card">
-                <GridCard
-                  m={toMarket(m)}
-                  onTrade={(mkt, side) => onTrade(mkt, side)}
-                  t={t}
-                  resolvedOutcome={undefined}
-                  isResolved={false}
-                  isCancelled={false}
-                  livePrice={liveInfo}
-                />
-                <span style={{ position: 'absolute', top: 18, right: 17, fontSize: 9, fontWeight: 700, fontFamily: 'monospace', color: t.purple, background: t.purpleBg, border: `1px solid ${t.purpleBorder}`, padding: '2px 6px', borderRadius: 4, pointerEvents: 'none' }}>
-                  🤖 AI
-                </span>
-              </div>
+              <GridCard
+                key={m.id}
+                m={m}
+                onTrade={(mkt, side) => onTrade(mkt, side)}
+                t={t}
+                resolvedOutcome={resolutions[String(m.id)]}
+                isResolved={m.resolved}
+                isCancelled={m.cancelled}
+                isEnded={isEnded}
+              />
             );
           })}
         </div>
@@ -1288,7 +1260,8 @@ export default function ArcanaMarkets(){
   const [tickIdx,setTickIdx]=useState(0);
   const [resolutions,setResolutions]=useState(()=>getResolutions());
   const [isOwner,setIsOwner]=useState(false);
-  const [expiredOnChain,setExpiredOnChain]=useState(new Set());
+  const [chainMarkets,setChainMarkets]=useState([]);
+  const [marketsLoading,setMarketsLoading]=useState(true);
   const [stats,setStats]=useState(()=>buildStats([]));const [dropdownOpen,setDropdownOpen]=useState(false); const [copied,setCopied]=useState(false); const [depositOpen,setDepositOpen]=useState(false); const [bridgeOpen,setBridgeOpen]=useState(false);
 
   const t=dark?THEMES.dark:THEMES.light;
@@ -1399,35 +1372,34 @@ export default function ArcanaMarkets(){
     return()=>clearInterval(iv);
   },[]);
 
+  // Markets, read live from the v2 contract — refreshed every 60s
+  useEffect(()=>{
+    let stopped=false;
+    const load=async()=>{
+      const list=await fetchChainMarkets();
+      if(!stopped){setChainMarkets(list);setMarketsLoading(false);}
+    };
+    load();
+    const iv=setInterval(load,60000);
+    return()=>{stopped=true;clearInterval(iv);};
+  },[]);
+
   // Live stats refresh every 60s
   useEffect(()=>{
     const refresh=async()=>{
       const live=await fetchLiveStats();
-      setStats(buildStats(live,LS.get("arcana_new_trades",[])));
+      setStats(buildStats(live,LS.get("arcana_new_trades",[]),chainMarkets.length));
     };
     refresh();
     const iv=setInterval(refresh,60000);
     return()=>clearInterval(iv);
-  },[]);
+  },[chainMarkets.length]);
 
   useEffect(()=>{
-    const timer=setInterval(()=>setTickIdx(i=>(i+1)%ALL_MARKETS.length),3500);
+    if(chainMarkets.length===0)return;
+    const timer=setInterval(()=>setTickIdx(i=>(i+1)%chainMarkets.length),3500);
     return()=>clearInterval(timer);
-  },[]);
-
-  // Batch-check on-chain endTimes and hide markets the contract would reject
-  useEffect(()=>{
-    const checkOnChainExpiry=async()=>{
-      const nowSec=Math.floor(Date.now()/1000);
-      const results=await Promise.all(ALL_MARKETS.map(m=>getOnChainMarket(m.id).catch(()=>null)));
-      const expired=new Set();
-      results.forEach((data,i)=>{
-        if(data&&data.endTime>0&&data.endTime<nowSec) expired.add(ALL_MARKETS[i].id);
-      });
-      if(expired.size>0) setExpiredOnChain(expired);
-    };
-    checkOnChainExpiry();
-  },[]);
+  },[chainMarkets.length]);
 
   const addPosition=useCallback((trade)=>{
     if(!account)return;
@@ -1452,7 +1424,7 @@ export default function ArcanaMarkets(){
 
   const refreshResolutions=()=>setResolutions(getResolutions());
 
-  const tick=ALL_MARKETS[tickIdx];
+  const tick=chainMarkets[tickIdx];
 
   const NAV_TABS=["Markets","Portfolio",...(isOwner?["Admin"]:[]),"Leaderboard","Activity"];
 
@@ -1569,7 +1541,7 @@ export default function ArcanaMarkets(){
 
         {page==="Admin"&&(
           isOwner
-            ?<AdminPanel t={t} account={account} onResolved={refreshResolutions}/>
+            ?<AdminPanel t={t} account={account} onResolved={refreshResolutions} markets={chainMarkets}/>
             :<div style={{textAlign:"center",padding:"80px 20px"}}>
               <div style={{fontSize:48,marginBottom:16}}>🚫</div>
               <p style={{color:t.textMuted,fontSize:15}}>Owner wallet required to access this panel</p>
@@ -1602,7 +1574,7 @@ export default function ArcanaMarkets(){
                   Predict. Trade. Win USDC.
                 </p>
                 <p style={{fontSize:14,color:t.textMuted,lineHeight:1.6}}>
-                  {ALL_MARKETS.length} prediction markets. Trade YES or NO with USDC on Arc's EVM testnet.
+                  {chainMarkets.length} prediction markets. Trade YES or NO with USDC on Arc's EVM testnet.
                 </p>
               </div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-start"}} className="hero-stats">
@@ -1615,7 +1587,7 @@ export default function ArcanaMarkets(){
               </div>
             </div>
 
-            <AIMarketsSection t={t} onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);}}/>
+            <LiveMarketsGrid t={t} markets={chainMarkets} loading={marketsLoading} resolutions={resolutions} onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);}}/>
 
             <div style={{marginTop:52,background:t.navy,borderRadius:16,padding:"30px 34px",display:"flex",gap:24,alignItems:"center",flexWrap:"wrap"}}>
               <div style={{width:48,height:48,borderRadius:14,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
