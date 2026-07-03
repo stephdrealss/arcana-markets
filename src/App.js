@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { WalletModal, BridgePanel, UnifiedBalancePanel, ERC8183JobPanel } from './ArcanaIntegrations';
 
 // ── CONTRACT CONFIG ───────────────────────────────────────────────────────────
-const CONTRACT_ADDRESS = "0x443a47eF1025e047879b1BA08c94e6dedB354D54";
+const CONTRACT_ADDRESS = "0x44c5445C01f1A0FD5D7AA661776327Ac11872889";
 const USDC_ADDRESS = "0x3600000000000000000000000000000000000000";
 const ARC_CHAIN_ID = "0x4cef52";
 const ARC_RPC =
@@ -23,7 +23,6 @@ const LS = {
 // ── CONTRACT ABI ──────────────────────────────────────────────────────────────
 const CONTRACT_ABI = [
   "function buyShares(uint256 _marketId, bool _isYes, uint256 _usdcAmount) external",
-  "function createMarket(string memory _title, string memory _category, uint256 _endTime) external",
   "function markets(uint256) external view returns (uint256 id, string title, string category, uint256 yesPool, uint256 noPool, uint256 endTime, bool resolved, bool cancelled)",
   "function marketCount() external view returns (uint256)",
   "function getMarketOdds(uint256 _marketId) external view returns (uint256 yesOdds, uint256 noOdds)",
@@ -353,46 +352,25 @@ const THEMES = {
   },
 };
 
+// AI/agent-generated markets only. Manual hand-authored markets removed;
+// FIFA Club World Cup 2026 (ids 77/78) removed — that event doesn't exist, unresolvable.
+// ids 80-88 are provisional pending on-chain creation; will be reconciled with the
+// real ids the contract assigns when scripts/seedWorldCup2026.ts is run (checkpoint).
 const ALL_MARKETS = [
-  {id:26,title:"OpenAI releases GPT-5 in 2026?",cat:"Tech & AI",yes:0.77,chg:+0.05,vol:"6,400,000",ends:"Dec 31 2026"},
-  {id:2,title:"BTC hits $120K before July 2026?",cat:"Crypto",yes:0.61,chg:+0.04,vol:"8,412,000",ends:"Jul 1 2026"},
-  {id:3,title:"ETH flips BTC market cap in 2026?",cat:"Crypto",yes:0.12,chg:-0.03,vol:"3,201,000",ends:"Dec 31 2026"},
-  {id:4,title:"Spot SOL ETF approved in 2026?",cat:"Crypto",yes:0.38,chg:+0.06,vol:"2,870,500",ends:"Dec 31 2026"},
-  {id:5,title:"USDC market cap exceeds $100B in 2026?",cat:"Crypto",yes:0.47,chg:+0.02,vol:"1,540,000",ends:"Dec 31 2026"},
-  {id:6,title:"Arc Network mainnet launches Q2 2026?",cat:"Arc",yes:0.72,chg:+0.08,vol:"4,100,000",ends:"Jun 30 2026",trending:true},
-  {id:7,title:"Arc TVL surpasses $500M by end of 2026?",cat:"Arc",yes:0.44,chg:+0.03,vol:"2,300,000",ends:"Dec 31 2026"},
-  {id:8,title:"Arc-native DEX launches with $10M+ TVL?",cat:"Arc",yes:0.58,chg:+0.05,vol:"1,800,000",ends:"Dec 31 2026"},
-  {id:9,title:"Arc Architects Program reaches 5K members?",cat:"Arc",yes:0.66,chg:+0.07,vol:"980,000",ends:"Dec 31 2026",hot:true},
-  {id:12,title:"Canelo Alvarez wins next fight by KO?",cat:"Sports",yes:0.54,chg:+0.03,vol:"1,700,000",ends:"Sep 30 2026"},
-  {id:13,title:"Lewis Hamilton wins a race in 2026 F1 season?",cat:"Sports",yes:0.48,chg:+0.05,vol:"2,400,000",ends:"Nov 30 2026"},
-  {id:15,title:"Lionel Messi retires before end of 2026?",cat:"Sports",yes:0.08,chg:-0.01,vol:"2,900,000",ends:"Dec 31 2026"},
-  {id:24,title:"US passes comprehensive crypto legislation?",cat:"Politics",yes:0.41,chg:+0.03,vol:"6,700,000",ends:"Dec 31 2026"},
-  {id:29,title:"G7 nation adopts a CBDC by end of 2026?",cat:"Politics",yes:0.27,chg:-0.02,vol:"3,800,000",ends:"Dec 31 2026"},
-  {id:30,title:"UK snap election called before end of 2026?",cat:"Politics",yes:0.14,chg:-0.04,vol:"2,100,000",ends:"Dec 31 2026"},
-  {id:31,title:"Trump approval rating above 50% before midterms?",cat:"Politics",yes:0.33,chg:+0.02,vol:"7,400,000",ends:"Nov 3 2026"},
-  {id:25,title:"Fed cuts rates twice before August 2026?",cat:"Macro",yes:0.23,chg:-0.07,vol:"5,900,000",ends:"Aug 1 2026"},
-  {id:32,title:"S&P 500 hits all-time high above 6,500 in 2026?",cat:"Macro",yes:0.55,chg:+0.04,vol:"4,300,000",ends:"Dec 31 2026"},
-  {id:33,title:"US enters recession in 2026?",cat:"Macro",yes:0.31,chg:+0.06,vol:"5,100,000",ends:"Dec 31 2026"},
-  {id:34,title:"Gold hits $3,500/oz before end of 2026?",cat:"Macro",yes:0.62,chg:+0.09,vol:"3,600,000",ends:"Dec 31 2026",hot:true},
-  {id:35,title:"Apple Vision Pro 2 announced in 2026?",cat:"Tech & AI",yes:0.43,chg:-0.02,vol:"2,200,000",ends:"Dec 31 2026"},
-  {id:36,title:"AI-generated content banned on a major platform?",cat:"Tech & AI",yes:0.18,chg:-0.05,vol:"3,400,000",ends:"Dec 31 2026"},
-  {id:37,title:"Elon Musk's xAI surpasses $100B valuation?",cat:"Tech & AI",yes:0.52,chg:+0.06,vol:"4,100,000",ends:"Dec 31 2026"},
-  {id:39,title:"A Marvel film tops $2B at the box office in 2026?",cat:"Culture",yes:0.39,chg:-0.02,vol:"3,100,000",ends:"Dec 31 2026"},
-  {id:40,title:"NASA Artemis Moon landing happens before 2027?",cat:"Science",yes:0.17,chg:-0.08,vol:"4,500,000",ends:"Dec 31 2026"},
-  {id:41,title:"A lab-grown meat product hits major US grocery chain?",cat:"Science",yes:0.29,chg:+0.03,vol:"1,900,000",ends:"Dec 31 2026"},
-  {id:28,title:"Global average temp sets new record high in 2026?",cat:"Science",yes:0.71,chg:+0.05,vol:"2,600,000",ends:"Dec 31 2026"},
-  {id:42,title:"Quantum computer breaks RSA-2048 encryption?",cat:"Science",yes:0.09,chg:-0.02,vol:"1,400,000",ends:"Dec 31 2026"},
-  // New markets (IDs 75-79) created Jun 2026 — endTime Jul 3 2026 on-chain
   {id:75,title:"Will England win FIFA World Cup 2026?",cat:"Sports",yes:0.22,chg:+0.03,vol:"0",ends:"Jul 3 2026"},
   {id:76,title:"Will Brazil beat Argentina in FIFA World Cup 2026?",cat:"Sports",yes:0.55,chg:+0.04,vol:"0",ends:"Jul 3 2026"},
-  {id:77,title:"Will Manchester City win FIFA Club World Cup 2026?",cat:"Sports",yes:0.52,chg:+0.03,vol:"0",ends:"Jul 3 2026",hot:true},
-  {id:78,title:"Will Real Madrid beat Chelsea in FIFA Club World Cup 2026?",cat:"Sports",yes:0.64,chg:+0.05,vol:"0",ends:"Jul 3 2026"},
   {id:79,title:"Will Bitcoin hit $150,000 by end of 2026?",cat:"Crypto",yes:0.48,chg:+0.06,vol:"0",ends:"Jul 3 2026",trending:true},
+  {id:1,title:"Will Argentina beat Cape Verde in the Round of 32?",cat:"Sports",yes:0.82,chg:0,vol:"0",ends:"Jul 3 2026",closeTime:"2026-07-03T18:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played."},
+  {id:2,title:"Will Australia beat Egypt in the Round of 32?",cat:"Sports",yes:0.40,chg:0,vol:"0",ends:"Jul 3 2026",closeTime:"2026-07-03T14:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played."},
+  {id:3,title:"Will Colombia beat Ghana in the Round of 32?",cat:"Sports",yes:0.63,chg:0,vol:"0",ends:"Jul 3 2026",closeTime:"2026-07-03T21:30:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played."},
+  {id:4,title:"Will the USA beat Belgium in the Round of 16?",cat:"Sports",yes:0.35,chg:0,vol:"0",ends:"Jul 6 2026",closeTime:"2026-07-06T12:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played. Kickoff time assumed noon ET pending confirmation; close time to be adjusted to actual kickoff."},
+  {id:5,title:"Will Mexico beat England in the Round of 16?",cat:"Sports",yes:0.30,chg:0,vol:"0",ends:"Jul 6 2026",closeTime:"2026-07-06T12:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result",betDefinition:"\"Beat\" means advancing by any means, including via penalty shootout.",voidCondition:"Void — full refund if the match is not played. Kickoff time assumed noon ET pending confirmation; close time to be adjusted to actual kickoff.",hot:true},
+  {id:6,title:"Will Argentina win the FIFA World Cup 2026?",cat:"Sports",yes:0.22,chg:0,vol:"0",ends:"Jul 19 2026",closeTime:"2026-07-19T15:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result, resolves after the Jul 19 final.",voidCondition:"Void — full refund if the tournament is not completed as scheduled."},
+  {id:7,title:"Will France reach the World Cup 2026 final?",cat:"Sports",yes:0.28,chg:0,vol:"0",ends:"Jul 19 2026",closeTime:"2026-07-19T15:00:00-04:00",resolutionSource:"Official FIFA World Cup 2026 result, resolves after the Jul 19 final.",voidCondition:"Void — full refund if the tournament is not completed as scheduled."},
+  {id:8,title:"Will Messi win the World Cup 2026 Golden Boot?",cat:"Sports",yes:0.15,chg:0,vol:"0",ends:"Jul 19 2026",closeTime:"2026-07-19T15:00:00-04:00",resolutionSource:"Per the official FIFA Golden Boot award for the 2026 tournament, resolves after the Jul 19 final.",voidCondition:"Void — full refund if the tournament is not completed as scheduled."},
 ];
 
-const CATS=["All","Trending","Crypto","Arc","Sports","Politics","Macro","Tech & AI","Culture","Science"];
 function parseEndDate(s){const hasYear=/20\d\d/.test(s||"");return new Date(hasYear?s:(s||"")+" 2026");}
-const TOP_MOVERS=[...ALL_MARKETS].filter(m=>{const d=parseEndDate(m.ends);return !isNaN(d.getTime())&&d>new Date();}).sort((a,b)=>Math.abs(b.chg)-Math.abs(a.chg)).slice(0,4);
 const pct=v=>Math.round(v*100);
 
 // ── SPARK LINE ────────────────────────────────────────────────────────────────
@@ -1011,6 +989,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
   if(!m)return null;
 
   const isMarketEnded=(()=>{
+    if(m.closeTime){const d=new Date(m.closeTime);return !isNaN(d.getTime())&&d<new Date();}
     const endsStr=m.ends||"";
     const hasYear=/20\d\d/.test(endsStr);
     const endDate=new Date(hasYear?endsStr:endsStr+" 2026");
@@ -1129,6 +1108,14 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                 <p style={{fontSize:13,color:t.text,lineHeight:1.4,margin:0,fontWeight:600,flex:1,paddingRight:12}}>{m.title}</p>
                 <button onClick={onClose} style={{background:"none",border:"none",color:t.textMuted,fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>
               </div>
+              {(m.resolutionSource||m.betDefinition||m.voidCondition)&&(
+                <div style={{background:t.bg,border:`1px solid ${t.border}`,borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:11,color:t.textMuted,lineHeight:1.5,fontFamily:"monospace"}}>
+                  <div style={{fontWeight:700,letterSpacing:1,marginBottom:4,color:t.text}}>RESOLUTION CRITERIA</div>
+                  {m.resolutionSource&&<div>Source: {m.resolutionSource}</div>}
+                  {m.betDefinition&&<div>{m.betDefinition}</div>}
+                  {m.voidCondition&&<div>{m.voidCondition}</div>}
+                </div>
+              )}
               {account&&<div style={{background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:t.green,fontFamily:"monospace"}}>Balance: ${usdcBalance} USDC</div>}
               {!account&&<div style={{background:t.amberBg,border:`1px solid ${t.amber}`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:t.amber,fontFamily:"monospace"}}>⚠ Connect wallet to trade</div>}
               {error&&<div style={{background:t.redBg,border:`1px solid ${t.redBorder}`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:t.red,fontFamily:"monospace"}}>{error}</div>}
@@ -1284,8 +1271,6 @@ function AIMarketsSection({ t, onTrade }) {
 export default function ArcanaMarkets(){
   const [dark,setDark]=useState(()=>LS.get("arcana_theme",false));
   const [page,setPage]=useState("Markets");
-  const [cat,setCat]=useState("All");
-  const [q,setQ]=useState("");
   const [active,setActive]=useState(null);
   const [tradeSide,setTradeSide]=useState(null);
   const [account,setAccount]=useState(()=>{
@@ -1467,7 +1452,6 @@ export default function ArcanaMarkets(){
 
   const refreshResolutions=()=>setResolutions(getResolutions());
 
-  const now=new Date(); const filtered=ALL_MARKETS.filter(m=>{const d=parseEndDate(m.ends);return !isNaN(d.getTime())&&d>now;}).filter(m=>!expiredOnChain.has(m.id)).filter(m=>cat==="Trending"?m.trending:cat==="All"?true:m.cat===cat).filter(m=>!q||m.title.toLowerCase().includes(q.toLowerCase()));
   const tick=ALL_MARKETS[tickIdx];
 
   const NAV_TABS=["Markets","Portfolio",...(isOwner?["Admin"]:[]),"Leaderboard","Activity"];
@@ -1631,70 +1615,7 @@ export default function ArcanaMarkets(){
               </div>
             </div>
 
-            <div style={{marginBottom:32}}>
-              <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:12}}>TOP MOVERS</div>
-              <div className="top-movers" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
-                {TOP_MOVERS.map(m=>{
-                  const up=m.chg>=0;
-                  return(
-                    <div key={m.id} onClick={()=>{setActive(m);setTradeSide(null);}}
-                      style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:10,transition:"all 0.15s"}}
-                      onMouseEnter={e=>e.currentTarget.style.borderColor=t.blue}
-                      onMouseLeave={e=>e.currentTarget.style.borderColor=t.border}>
-                      <div style={{flex:1}}>
-                        <p style={{fontSize:12,color:t.text,fontWeight:600,margin:"0 0 4px",lineHeight:1.3}}>{m.title.slice(0,30)}…</p>
-                        <span style={{fontSize:11,fontFamily:"monospace",color:t.textMuted}}>{pct(m.yes)}%</span>
-                      </div>
-                      <span style={{fontSize:13,fontWeight:700,fontFamily:"monospace",color:up?t.green:t.red}}>{up?"+":""}{Math.round(m.chg*100)}%</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
             <AIMarketsSection t={t} onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);}}/>
-
-            <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"center",flexWrap:"wrap"}} className="filter-row">
-              <div style={{display:"flex",gap:5,flex:1,flexWrap:"wrap"}}>
-                {CATS.map(c=>(
-                  <button key={c} onClick={()=>setCat(c)}
-                    style={{padding:"6px 13px",background:cat===c?t.blue:t.surface,border:`1px solid ${cat===c?t.blue:t.border}`,borderRadius:20,color:cat===c?"#fff":t.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{c}</button>
-                ))}
-              </div>
-              <div style={{display:"flex",gap:8,flexShrink:0}}>
-                <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search..."
-                  style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:"7px 12px",color:t.text,fontSize:13,outline:"none",width:160}}/>
-              </div>
-            </div>
-
-            <div style={{marginBottom:16,fontSize:12,color:t.textMuted,fontFamily:"monospace"}}>{filtered.length} markets</div>
-
-            <div className="markets-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:16}}>
-              {filtered.map(m=>{
-                const outcome=resolutions[String(m.id)];
-                const isResolved=outcome!==undefined;
-                const isEnded=!isResolved&&parseEndDate(m.ends)<=now;
-                return(
-                  <div key={m.id} className="card">
-                    <GridCard m={m}
-                      onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);}}
-                      t={t}
-                      resolvedOutcome={outcome}
-                      isResolved={isResolved}
-                      isCancelled={false}
-                      isEnded={isEnded}
-                      livePrice={
-                        m.cat==="Crypto"&&m.title.includes("BTC")&&livePrices.bitcoin?`BTC $${livePrices.bitcoin.price?.toLocaleString()}`:
-                        m.cat==="Crypto"&&m.title.includes("ETH")&&livePrices.ethereum?`ETH $${livePrices.ethereum.price?.toLocaleString()}`:
-                        m.cat==="Crypto"&&m.title.includes("SOL")&&livePrices.solana?`SOL $${livePrices.solana.price?.toLocaleString()}`:
-                        null
-                      }
-                    />
-                  </div>
-                );
-              })}
-            </div>
-            {filtered.length===0&&<div style={{textAlign:"center",padding:"60px 0",color:t.textMuted}}>No markets found</div>}
 
             <div style={{marginTop:52,background:t.navy,borderRadius:16,padding:"30px 34px",display:"flex",gap:24,alignItems:"center",flexWrap:"wrap"}}>
               <div style={{width:48,height:48,borderRadius:14,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>

@@ -5,7 +5,7 @@
 const { ethers } = require('ethers');
 
 const RPC              = 'https://rpc.testnet.arc.network';
-const CONTRACT_ADDRESS = '0x443a47eF1025e047879b1BA08c94e6dedB354D54';
+const CONTRACT_ADDRESS = '0x44c5445C01f1A0FD5D7AA661776327Ac11872889';
 
 const ABI = [
   'function createMarket(string memory _title, string memory _category, uint256 _endTime) external',
@@ -15,8 +15,6 @@ const ABI = [
 const MARKETS = [
   { title: 'Will England win FIFA World Cup 2026?',                     category: 'Sports' },
   { title: 'Will Brazil beat Argentina in FIFA World Cup 2026?',        category: 'Sports' },
-  { title: 'Will Manchester City win FIFA Club World Cup 2026?',        category: 'Sports' },
-  { title: 'Will Real Madrid beat Chelsea in FIFA Club World Cup 2026?',category: 'Sports' },
   { title: 'Will Bitcoin hit $150,000 by end of 2026?',                 category: 'Crypto' },
 ];
 
