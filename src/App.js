@@ -817,7 +817,7 @@ function Portfolio({t,account,positions,walletType,walletId}){
             {/* Status badges */}
             <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
               <span style={{fontSize:10,fontWeight:700,fontFamily:"monospace",color:accentColor,background:accentBg,padding:"3px 8px",borderRadius:4}}>
-                {status==="resolved"?(yw===null?"RESOLVED":yw?"✓ YES WON":"✕ NO WON"):status==="pending"?"ENDED — PENDING RESOLUTION":status==="cancelled"?"CANCELLED":"OPEN"}
+                {status==="resolved"?(yw===null?"RESOLVED":yw?"✓ YES WON":"✕ NO WON"):status==="pending"?"AWAITING RESOLUTION":status==="cancelled"?"CANCELLED":"OPEN"}
               </span>
               {winner===true&&!alreadyClaimed&&<span style={{fontSize:10,fontWeight:700,color:t.green,background:t.greenBg,padding:"3px 8px",borderRadius:4,fontFamily:"monospace"}}>🏆 YOU WON</span>}
               {winner===false&&<span style={{fontSize:10,fontWeight:700,color:t.red,background:t.redBg,padding:"3px 8px",borderRadius:4,fontFamily:"monospace"}}>✕ YOU LOST</span>}
@@ -889,7 +889,7 @@ function Portfolio({t,account,positions,walletType,walletId}){
               <span style={{fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>✓ Claimed</span>
             )}
             {status==="pending"&&(
-              <span style={{fontSize:11,color:t.amber,fontFamily:"monospace",fontWeight:700}}>⏳ Awaiting admin resolution</span>
+              <span style={{fontSize:11,color:t.amber,fontFamily:"monospace",fontWeight:700}}>⏳ Awaiting resolution</span>
             )}
             {status==="open"&&(
               <span style={{fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>Market still open</span>
@@ -931,7 +931,7 @@ function Portfolio({t,account,positions,walletType,walletId}){
       )}
       {pending.length>0&&(
         <>
-          <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10,marginTop:24}}>PENDING RESOLUTION — MARKET ENDED, AWAITING ADMIN</div>
+          <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10,marginTop:24}}>AWAITING RESOLUTION</div>
           {pending.map(renderGroup)}
         </>
       )}
