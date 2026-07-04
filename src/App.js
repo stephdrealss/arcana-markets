@@ -906,8 +906,8 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,
   const [hov,setHov]=useState(false);
   const yes=pct(m.yes),no=100-yes,up=m.chg>=0,sparkCol=up?t.green:t.red;
 
-  const topBarColor=isResolved?(resolvedOutcome?t.green:t.red):isCancelled?t.amber:isEnded?t.textMuted:hov?t.blue:t.border;
-  const cardBorderColor=isResolved?(resolvedOutcome?t.greenBorder:t.redBorder):isCancelled?t.amber:isEnded?t.border:hov?t.cardBorderHov:t.cardBorder;
+  const topBarColor=isResolved?(resolvedOutcome?t.green:t.textLight):isCancelled?t.amber:isEnded?t.textMuted:hov?t.blue:t.border;
+  const cardBorderColor=isResolved?(resolvedOutcome?t.greenBorder:t.border):isCancelled?t.amber:isEnded?t.border:hov?t.cardBorderHov:t.cardBorder;
 
   return(
     <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
@@ -922,7 +922,7 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,
             <span style={{fontSize:10,fontWeight:700,color:t.blue,background:t.blueDim,padding:"2px 7px",borderRadius:4,fontFamily:"monospace"}}>{m.cat}</span>
           </div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
-            {isResolved&&<span style={{fontSize:9,fontWeight:700,color:resolvedOutcome?t.green:t.red,background:resolvedOutcome?t.greenBg:t.redBg,padding:"2px 6px",borderRadius:4,fontFamily:"monospace"}}>{resolvedOutcome?"✓ YES WON":"✕ NO WON"}</span>}
+            {isResolved&&<span style={{fontSize:9,fontWeight:700,color:resolvedOutcome?t.green:t.textMuted,background:resolvedOutcome?t.greenBg:t.surfaceAlt,padding:"2px 6px",borderRadius:4,fontFamily:"monospace"}}>{resolvedOutcome?"YES won":"NO won"}</span>}
             {isCancelled&&<span style={{fontSize:9,fontWeight:700,color:t.amber,background:t.amberBg,padding:"2px 6px",borderRadius:4}}>CANCELLED</span>}
             {isEnded&&!isResolved&&!isCancelled&&<span style={{fontSize:9,fontWeight:700,color:t.textMuted,background:t.surfaceAlt,border:`1px solid ${t.border}`,padding:"2px 6px",borderRadius:4,fontFamily:"monospace"}}>ENDED</span>}
             {!isResolved&&!isCancelled&&!isEnded&&m.hot&&<span style={{fontSize:9,fontWeight:700,color:t.amber,background:t.amberBg,padding:"2px 5px",borderRadius:4}}>🔥 HOT</span>}
@@ -946,7 +946,7 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,
             </div>
           </div>
           <div style={{height:5,borderRadius:3,background:t.surfaceAlt,overflow:"hidden"}}>
-            <div style={{width:`${yes}%`,height:"100%",background:isResolved?(resolvedOutcome?t.green:t.red):`linear-gradient(90deg,${t.green},${t.blue})`,borderRadius:3}}/>
+            <div style={{width:`${yes}%`,height:"100%",background:isResolved?(resolvedOutcome?t.green:t.textLight):`linear-gradient(90deg,${t.green},${t.blue})`,borderRadius:3}}/>
           </div>
           <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
             <span style={{fontSize:11,color:t.blue,fontFamily:"monospace",fontWeight:600}}>YES {yes}¢</span>
@@ -960,8 +960,8 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,
         </div>
 
         {isResolved?(
-          <div style={{padding:"10px",background:resolvedOutcome?t.greenBg:t.redBg,border:`1px solid ${resolvedOutcome?t.greenBorder:t.redBorder}`,borderRadius:8,textAlign:"center",fontSize:13,fontWeight:700,color:resolvedOutcome?t.green:t.red,fontFamily:"monospace"}}>
-            {resolvedOutcome?"✓ YES WON — go to Portfolio to claim":"✕ NO WON — go to Portfolio to claim"}
+          <div style={{padding:"8px 10px",background:resolvedOutcome?t.greenBg:t.surfaceAlt,border:`1px solid ${resolvedOutcome?t.greenBorder:t.border}`,borderRadius:8,textAlign:"center",fontSize:12,fontWeight:600,color:resolvedOutcome?t.green:t.textMuted,fontFamily:"monospace"}}>
+            {resolvedOutcome?"YES won":"NO won"} · claim in Portfolio
           </div>
         ):isCancelled?(
           <div style={{padding:"10px",background:t.amberBg,border:`1px solid ${t.amber}`,borderRadius:8,textAlign:"center",fontSize:13,fontWeight:700,color:t.amber,fontFamily:"monospace"}}>
@@ -1171,9 +1171,16 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
 // ── LIVE MARKETS GRID — reads directly from the v2 contract, no other source ──
 const CATS=["All","Trending","Crypto","Arc","Sports","Politics","Macro","Tech & AI","Culture","Science"];
 
+const nowSec = () => Math.floor(Date.now() / 1000);
+const isPastMarket = m => m.resolved || m.cancelled || (m.endTime > 0 && m.endTime < nowSec());
+
 function LiveMarketsGrid({ t, markets, loading, onTrade, cat, setCat, q, setQ }) {
+  const showResolved = cat === "Resolved";
+  const pastCount = markets.filter(isPastMarket).length;
+
   const filtered = markets
-    .filter(m => cat==="All" ? true : cat==="Trending" ? m.trending : m.cat===cat)
+    .filter(m => showResolved ? isPastMarket(m) : !isPastMarket(m))
+    .filter(m => showResolved || cat==="All" ? true : cat==="Trending" ? m.trending : m.cat===cat)
     .filter(m => !q || m.title.toLowerCase().includes(q.toLowerCase()));
 
   return (
@@ -1197,6 +1204,10 @@ function LiveMarketsGrid({ t, markets, loading, onTrade, cat, setCat, q, setQ })
             <button key={c} onClick={()=>setCat(c)}
               style={{padding:"6px 13px",background:cat===c?t.blue:t.surface,border:`1px solid ${cat===c?t.blue:t.border}`,borderRadius:20,color:cat===c?"#fff":t.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{c}</button>
           ))}
+          <button onClick={()=>setCat("Resolved")}
+            style={{padding:"6px 13px",background:showResolved?t.textMuted:t.surface,border:`1px solid ${showResolved?t.textMuted:t.border}`,borderRadius:20,color:showResolved?t.surface:t.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
+            Resolved{pastCount>0?` (${pastCount})`:""}
+          </button>
         </div>
         <div style={{display:"flex",gap:8,flexShrink:0}}>
           <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search..."
@@ -1232,8 +1243,7 @@ function LiveMarketsGrid({ t, markets, loading, onTrade, cat, setCat, q, setQ })
       {markets.length > 0 && filtered.length > 0 && (
         <div className="markets-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {filtered.map(m => {
-            const nowSec = Math.floor(Date.now() / 1000);
-            const isEnded = m.endTime > 0 && m.endTime < nowSec && !m.resolved && !m.cancelled;
+            const isEnded = !m.resolved && !m.cancelled && m.endTime > 0 && m.endTime < nowSec();
             return (
               <GridCard
                 key={m.id}
