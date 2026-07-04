@@ -470,7 +470,7 @@ function ClaimButton({marketId,isRefund,t,onDone,walletType,walletId}){
 }
 
 // ── ADMIN PANEL ───────────────────────────────────────────────────────────────
-function AdminPanel({t,account,onResolved,markets=[]}){
+function AdminPanel({t,account,onResolved,markets=[],walletType,walletId}){
   const [resolveId,setResolveId]=useState("");
   const [outcome,setOutcome]=useState("YES");
   const [cancelId,setCancelId]=useState("");
@@ -483,17 +483,31 @@ function AdminPanel({t,account,onResolved,markets=[]}){
     return provider.getSigner();
   };
 
+  const sendTx=async(fnSig,params)=>{
+    if(walletType==="circle"){
+      setStatus({type:"info",msg:"Confirming via Circle..."});
+      const res=await fetch("/api/execute-trade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({walletId,contractAddress:CONTRACT_ADDRESS,abiFunctionSignature:fnSig,abiParameters:params})});
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error||"Transaction failed");
+      return data.txHash||"";
+    }
+    const signer=await getSigner();
+    const contract=new ethers.Contract(CONTRACT_ADDRESS,CONTRACT_ABI,signer);
+    setStatus({type:"info",msg:"Confirm in wallet..."});
+    const tx=fnSig==="resolveMarket(uint256,bool)"
+      ?await contract.resolveMarket(params[0],params[1]==="true")
+      :await contract.cancelMarket(params[0]);
+    setStatus({type:"info",msg:"Waiting for confirmation..."});
+    await tx.wait();
+    return tx.hash;
+  };
+
   const resolve=async()=>{
     if(!resolveId)return;
     setLoading(true);setStatus(null);
     try{
-      const signer=await getSigner();
-      const contract=new ethers.Contract(CONTRACT_ADDRESS,CONTRACT_ABI,signer);
-      setStatus({type:"info",msg:"Confirm in wallet..."});
       const yesWon=outcome==="YES";
-      const tx=await contract.resolveMarket(Number(resolveId),yesWon);
-      setStatus({type:"info",msg:"Waiting for confirmation..."});
-      await tx.wait();
+      await sendTx("resolveMarket(uint256,bool)",[resolveId,String(yesWon)]);
       onResolved();
       setStatus({type:"ok",msg:`✓ Market #${resolveId} resolved — ${outcome} won`});
       setResolveId("");
@@ -507,11 +521,7 @@ function AdminPanel({t,account,onResolved,markets=[]}){
     if(!cancelId)return;
     setLoading(true);setStatus(null);
     try{
-      const signer=await getSigner();
-      const contract=new ethers.Contract(CONTRACT_ADDRESS,CONTRACT_ABI,signer);
-      setStatus({type:"info",msg:"Confirm in wallet..."});
-      const tx=await contract.cancelMarket(Number(cancelId));
-      await tx.wait();
+      await sendTx("cancelMarket(uint256)",[cancelId]);
       onResolved();
       setStatus({type:"ok",msg:`✓ Market #${cancelId} cancelled — traders can refund`});
       setCancelId("");
@@ -1594,7 +1604,7 @@ export default function ArcanaMarkets(){
 
         {page==="Admin"&&(
           isAdmin
-            ?<AdminPanel t={t} account={account} onResolved={loadMarkets} markets={chainMarkets}/>
+            ?<AdminPanel t={t} account={account} onResolved={loadMarkets} markets={chainMarkets} walletType={walletType} walletId={circleWalletId}/>
             :<div style={{textAlign:"center",padding:"80px 20px"}}>
               <div style={{fontSize:48,marginBottom:16}}>🚫</div>
               <p style={{color:t.textMuted,fontSize:15}}>Owner wallet required to access this panel</p>
