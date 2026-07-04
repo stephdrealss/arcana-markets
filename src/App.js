@@ -692,6 +692,7 @@ function Portfolio({t,account,positions,walletType,walletId}){
   const [onChain,setOnChain]=useState({});
   const [loading,setLoading]=useState(false);
   const [justClaimedTx,setJustClaimedTx]=useState({});
+  const [tab,setTab]=useState("Positions");
 
   const fetchOnChain=useCallback(async()=>{
     if(!account||positions.length===0)return;
@@ -909,42 +910,57 @@ function Portfolio({t,account,positions,walletType,walletId}){
           {loading?"SYNCING...":"↻ REFRESH"}
         </button>
       </div>
-      <p style={{fontSize:13,color:t.textMuted,marginBottom:24}}>
+      <p style={{fontSize:13,color:t.textMuted,marginBottom:20}}>
         Live data from Arc Testnet · Winners claim directly on-chain
       </p>
 
-      {/* Stats */}
-      <div style={{display:"flex",gap:12,marginBottom:28,flexWrap:"wrap"}}>
-        {[["Total Invested",`$${totalInvested.toFixed(2)}`],["Open",open.length],["Pending",pending.length],["Resolved",resolved.length],["Cancelled",cancelled.length]].map(([l,v])=>(
-          <div key={l} style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"14px 20px",minWidth:110}}>
-            <div style={{fontSize:11,color:t.textLight,fontFamily:"monospace",marginBottom:4}}>{l}</div>
-            <div style={{fontSize:18,fontWeight:800,fontFamily:"monospace",color:t.text}}>{v}</div>
-          </div>
+      <div style={{display:"flex",gap:8,marginBottom:24}}>
+        {["Positions","History"].map(tb=>(
+          <button key={tb} onClick={()=>setTab(tb)}
+            style={{padding:"7px 16px",background:tab===tb?t.blue:t.surface,border:`1px solid ${tab===tb?t.blue:t.border}`,borderRadius:8,color:tab===tb?"#fff":t.textMuted,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+            {tb}
+          </button>
         ))}
       </div>
 
-      {resolved.length>0&&(
+      {tab==="History"?(
+        <History t={t} account={account} positions={positions} embedded/>
+      ):(
         <>
-          <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10}}>RESOLVED — CLAIM YOUR WINNINGS</div>
-          {resolved.map(renderGroup)}
-        </>
-      )}
-      {pending.length>0&&(
-        <>
-          <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10,marginTop:24}}>AWAITING RESOLUTION</div>
-          {pending.map(renderGroup)}
-        </>
-      )}
-      {cancelled.length>0&&(
-        <>
-          <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10,marginTop:24}}>CANCELLED — REFUND AVAILABLE</div>
-          {cancelled.map(renderGroup)}
-        </>
-      )}
-      {open.length>0&&(
-        <>
-          <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10,marginTop:24}}>OPEN POSITIONS</div>
-          {open.map(renderGroup)}
+          {/* Stats */}
+          <div style={{display:"flex",gap:12,marginBottom:28,flexWrap:"wrap"}}>
+            {[["Total Invested",`$${totalInvested.toFixed(2)}`],["Open",open.length],["Pending",pending.length],["Resolved",resolved.length],["Cancelled",cancelled.length]].map(([l,v])=>(
+              <div key={l} style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"14px 20px",minWidth:110}}>
+                <div style={{fontSize:11,color:t.textLight,fontFamily:"monospace",marginBottom:4}}>{l}</div>
+                <div style={{fontSize:18,fontWeight:800,fontFamily:"monospace",color:t.text}}>{v}</div>
+              </div>
+            ))}
+          </div>
+
+          {resolved.length>0&&(
+            <>
+              <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10}}>RESOLVED — CLAIM YOUR WINNINGS</div>
+              {resolved.map(renderGroup)}
+            </>
+          )}
+          {pending.length>0&&(
+            <>
+              <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10,marginTop:24}}>AWAITING RESOLUTION</div>
+              {pending.map(renderGroup)}
+            </>
+          )}
+          {cancelled.length>0&&(
+            <>
+              <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10,marginTop:24}}>CANCELLED — REFUND AVAILABLE</div>
+              {cancelled.map(renderGroup)}
+            </>
+          )}
+          {open.length>0&&(
+            <>
+              <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10,marginTop:24}}>OPEN POSITIONS</div>
+              {open.map(renderGroup)}
+            </>
+          )}
         </>
       )}
     </div>
@@ -1070,7 +1086,7 @@ function Activity({t,account,newTrades=[]}){
 }
 
 // ── HISTORY — your own trades + claims/refunds, chronological ────────────────
-function History({t,account,positions}){
+function History({t,account,positions,embedded}){
   const [chainData,setChainData]=useState({});
   const [loading,setLoading]=useState(false);
 
@@ -1140,16 +1156,25 @@ function History({t,account,positions}){
   const TYPE_COLOR={trade:t.blue,claim:t.green,refund:t.amber};
 
   return(
-    <div style={{padding:"32px 0"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-        <h2 style={{fontSize:22,fontWeight:800,color:t.text}}>History</h2>
-        <span style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,background:t.blueDim,padding:"4px 10px",borderRadius:6}}>
-          {loading?"loading...":entries.length+" events"}
-        </span>
-      </div>
-      <p style={{fontSize:13,color:t.textMuted,marginBottom:24}}>
-        Your trades, claims and refunds — most recent first
-      </p>
+    <div style={embedded?{}:{padding:"32px 0"}}>
+      {!embedded&&(
+        <>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+            <h2 style={{fontSize:22,fontWeight:800,color:t.text}}>History</h2>
+            <span style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,background:t.blueDim,padding:"4px 10px",borderRadius:6}}>
+              {loading?"loading...":entries.length+" events"}
+            </span>
+          </div>
+          <p style={{fontSize:13,color:t.textMuted,marginBottom:24}}>
+            Your trades, claims and refunds — most recent first
+          </p>
+        </>
+      )}
+      {embedded&&(
+        <div style={{marginBottom:16,fontSize:12,color:t.textMuted,fontFamily:"monospace"}}>
+          {loading?"loading...":entries.length+" events"} · most recent first
+        </div>
+      )}
       <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,overflow:"hidden",maxHeight:600,overflowY:"auto"}}>
         {entries.map((row,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 20px",borderBottom:i<entries.length-1?`1px solid ${t.border}`:"none"}}>
@@ -1719,7 +1744,7 @@ export default function ArcanaMarkets(){
 
   const tick=chainMarkets[tickIdx];
 
-  const NAV_TABS=["Markets","Portfolio","History",...(isAdmin?["Admin"]:[]),"Leaderboard","Activity"];
+  const NAV_TABS=["Markets","Portfolio",...(isAdmin?["Admin"]:[]),"Leaderboard","Activity"];
 
   return(
     <div style={{minHeight:"100vh",background:t.bg,color:t.text,fontFamily:"'DM Sans',system-ui,sans-serif"}}>
@@ -1843,10 +1868,6 @@ export default function ArcanaMarkets(){
 
         {page==="Portfolio"&&(
           <Portfolio t={t} account={account} positions={positions} walletType={walletType} walletId={circleWalletId}/>
-        )}
-
-        {page==="History"&&(
-          <History t={t} account={account} positions={positions}/>
         )}
 
         {page==="Leaderboard"&&(
