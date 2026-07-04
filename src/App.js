@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ethers } from "ethers";
 import { WalletModal, BridgePanel, UnifiedBalancePanel, ERC8183JobPanel } from './ArcanaIntegrations';
 
@@ -1203,7 +1203,7 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,
   const cardBorderColor=isResolved?(resolvedOutcome?t.greenBorder:t.border):isCancelled?t.amber:isEnded?t.border:hov?t.cardBorderHov:t.cardBorder;
 
   return(
-    <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+    <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} onClick={()=>onTrade(m,null)}
       style={{background:t.surface,border:`1.5px solid ${cardBorderColor}`,borderRadius:12,display:"flex",flexDirection:"column",cursor:"pointer",transition:"all 0.18s",boxShadow:hov?t.shadowHov:t.shadow,opacity:isEnded?0.65:isCancelled?0.75:1}}>
       <div style={{height:3,background:topBarColor,borderRadius:"10px 10px 0 0",transition:"background 0.2s"}}/>
       <div style={{padding:"15px 17px",flex:1,display:"flex",flexDirection:"column",gap:10}}>
@@ -1274,6 +1274,8 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,
             ))}
           </div>
         )}
+
+        <ShareButtons m={m} t={t} compact/>
       </div>
     </div>
   );
@@ -1386,6 +1388,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
               <div style={{fontSize:40,marginBottom:12}}>🔒</div>
               <h3 style={{fontSize:17,fontWeight:800,color:t.text,marginBottom:8}}>Market Closed</h3>
               <p style={{fontSize:13,color:t.textMuted,lineHeight:1.6,marginBottom:16}}>This market has ended and is pending resolution.</p>
+              <div style={{display:"flex",justifyContent:"center",marginBottom:16}}><ShareButtons m={m} t={t}/></div>
               <button onClick={onClose} style={{width:"100%",padding:"12px",background:t.blue,color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer"}}>Close</button>
             </div>
           ):done?(
@@ -1402,14 +1405,16 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
                 ))}
               </div>
              <a href={`https://testnet.arcscan.app/tx/${txHash}`} target="_blank" rel="noreferrer" style={{display:"block",textAlign:"center",fontSize:12,color:t.blue,fontFamily:"monospace",textDecoration:"none",marginBottom:12}}>↗ View on ArcScan</a>
+              <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><ShareButtons m={m} t={t}/></div>
               <button onClick={onClose} style={{width:"100%",padding:"10px",background:t.blue,color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer"}}>Done</button>
             </div>
           ):(
             <>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
                 <p style={{fontSize:13,color:t.text,lineHeight:1.4,margin:0,fontWeight:600,flex:1,paddingRight:12}}>{m.title}</p>
                 <button onClick={onClose} style={{background:"none",border:"none",color:t.textMuted,fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>
               </div>
+              <div style={{marginBottom:16}}><ShareButtons m={m} t={t} compact/></div>
               {(m.resolutionSource||m.betDefinition||m.voidCondition)&&(
                 <div style={{background:t.bg,border:`1px solid ${t.border}`,borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:11,color:t.textMuted,lineHeight:1.5,fontFamily:"monospace"}}>
                   <div style={{fontWeight:700,letterSpacing:1,marginBottom:4,color:t.text}}>RESOLUTION CRITERIA</div>
@@ -1466,6 +1471,49 @@ const CATS=["All","Trending","Crypto","Arc","Sports","Politics","Macro","Tech & 
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 const isPastMarket = m => m.resolved || m.cancelled || (m.endTime > 0 && m.endTime < nowSec());
+
+// ── SHAREABLE LINKS — routing + share helpers ─────────────────────────────────
+const slugifyCat = c => c.toLowerCase().replace(/\s+&\s+/g,"-").replace(/\s+/g,"-");
+const CAT_SLUGS = Object.fromEntries(CATS.filter(c=>c!=="All").map(c=>[slugifyCat(c),c]));
+
+function parseRoute(){
+  const path = window.location.pathname;
+  let m = path.match(/^\/market\/(\d+)\/?$/);
+  if(m) return {type:"market", id:Number(m[1])};
+  m = path.match(/^\/markets\/([a-z0-9-]+)\/?$/);
+  if(m) return {type:"category", slug:m[1]};
+  return {type:"home"};
+}
+
+const marketUrl = id => `${window.location.origin}/market/${id}`;
+const shareTweetUrl = m => {
+  const yesPct = Math.round((m.yes??0.5)*100);
+  const text = `${m.title} — ${yesPct}% YES`;
+  return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(marketUrl(m.id))}`;
+};
+
+function ShareButtons({m,t,compact}){
+  const [copied,setCopied]=useState(false);
+  const doCopy=(e)=>{
+    e.stopPropagation();
+    navigator.clipboard.writeText(marketUrl(m.id)).then(()=>{
+      setCopied(true);
+      setTimeout(()=>setCopied(false),2000);
+    }).catch(()=>{});
+  };
+  return(
+    <div style={{display:"flex",gap:6,alignItems:"center"}} onClick={e=>e.stopPropagation()}>
+      <button onClick={doCopy} title="Copy market link"
+        style={{padding:compact?"4px 9px":"6px 12px",background:t.surfaceAlt,border:`1px solid ${t.border}`,borderRadius:6,color:t.textMuted,fontSize:11,fontFamily:"monospace",cursor:"pointer",fontWeight:600}}>
+        {copied?"✓ Copied":"🔗 Copy Link"}
+      </button>
+      <a href={shareTweetUrl(m)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+        style={{padding:compact?"4px 9px":"6px 12px",background:t.surfaceAlt,border:`1px solid ${t.border}`,borderRadius:6,color:t.textMuted,fontSize:11,fontFamily:"monospace",cursor:"pointer",fontWeight:600,textDecoration:"none"}}>
+        𝕏 Share
+      </a>
+    </div>
+  );
+}
 
 function LiveMarketsGrid({ t, markets, loading, onTrade, cat, setCat, q, setQ }) {
   const showResolved = cat === "Resolved";
@@ -1567,6 +1615,8 @@ export default function ArcanaMarkets(){
   const [q,setQ]=useState("");
   const [active,setActive]=useState(null);
   const [tradeSide,setTradeSide]=useState(null);
+  const marketRouteHandled=useRef(false);
+  const chainMarketsRef=useRef([]);
   const [account,setAccount]=useState(()=>{
     if(LS.get("arcana_user_disconnected",false))return null;
     const savedType=LS.get("arcana_wallet_type",null);
@@ -1703,6 +1753,52 @@ export default function ArcanaMarkets(){
     const iv=setInterval(loadMarkets,60000);
     return()=>clearInterval(iv);
   },[loadMarkets]);
+
+  // ── SHAREABLE LINKS — deep-link routing ─────────────────────────────────────
+  useEffect(()=>{ chainMarketsRef.current=chainMarkets; },[chainMarkets]);
+
+  // Handle a /markets/:category deep link on first load (no chain data needed)
+  useEffect(()=>{
+    const route=parseRoute();
+    if(route.type==="category"){
+      const c=CAT_SLUGS[route.slug];
+      if(c){ setCat(c); setPage("Markets"); }
+    }
+  },[]);
+
+  // Handle a /market/:id deep link once chain markets have loaded
+  useEffect(()=>{
+    if(marketRouteHandled.current)return;
+    const route=parseRoute();
+    if(route.type!=="market"){ marketRouteHandled.current=true; return; }
+    if(chainMarkets.length===0)return;
+    const found=chainMarkets.find(mm=>Number(mm.id)===route.id);
+    if(found){ setPage("Markets"); setActive(found); setTradeSide(null); }
+    marketRouteHandled.current=true;
+  },[chainMarkets]);
+
+  // Keep the URL in sync with the selected category (while no market modal is open)
+  useEffect(()=>{
+    if(active)return;
+    const path=cat&&cat!=="All"&&cat!=="Resolved"?`/markets/${slugifyCat(cat)}`:"/";
+    if(window.location.pathname!==path) window.history.replaceState({},"",path);
+  },[cat,active]);
+
+  // Browser back/forward
+  useEffect(()=>{
+    const onPop=()=>{
+      const route=parseRoute();
+      if(route.type==="market"){
+        const found=chainMarketsRef.current.find(mm=>Number(mm.id)===route.id);
+        if(found){ setActive(found); setTradeSide(null); }
+      }else{
+        setActive(null); setTradeSide(null);
+        setCat(route.type==="category"?(CAT_SLUGS[route.slug]||"All"):"All");
+      }
+    };
+    window.addEventListener("popstate",onPop);
+    return()=>window.removeEventListener("popstate",onPop);
+  },[]);
 
   // Live stats refresh every 60s
   useEffect(()=>{
@@ -1905,7 +2001,7 @@ export default function ArcanaMarkets(){
               </div>
             </div>
 
-            <LiveMarketsGrid t={t} markets={chainMarkets} loading={marketsLoading} onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);}} cat={cat} setCat={setCat} q={q} setQ={setQ}/>
+            <LiveMarketsGrid t={t} markets={chainMarkets} loading={marketsLoading} onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);window.history.pushState({},"",`/market/${mkt.id}`);}} cat={cat} setCat={setCat} q={q} setQ={setQ}/>
 
             <div style={{marginTop:52,background:t.navy,borderRadius:16,padding:"30px 34px",display:"flex",gap:24,alignItems:"center",flexWrap:"wrap"}}>
               <div style={{width:48,height:48,borderRadius:14,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -1939,7 +2035,11 @@ export default function ArcanaMarkets(){
         <TradeModal
           m={active}
           initSide={tradeSide}
-          onClose={()=>{setActive(null);setTradeSide(null);}}
+          onClose={()=>{
+            setActive(null);setTradeSide(null);
+            const path=cat&&cat!=="All"&&cat!=="Resolved"?`/markets/${slugifyCat(cat)}`:"/";
+            window.history.pushState({},"",path);
+          }}
           t={t}
           account={account}
           usdcBalance={usdcBalance}
