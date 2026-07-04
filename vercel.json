@@ -2,6 +2,14 @@
   "functions": {
     "api/*.js": {
       "maxDuration": 60
+    },
+    "api/market/[id].js": {
+      "maxDuration": 10,
+      "includeFiles": "build/index.html"
     }
-  }
+  },
+  "rewrites": [
+    { "source": "/market/:id", "destination": "/api/market/:id" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
