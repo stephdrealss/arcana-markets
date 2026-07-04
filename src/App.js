@@ -402,24 +402,34 @@ function Spark({prob,up,col}){
 }
 
 // ── CLAIM BUTTON ──────────────────────────────────────────────────────────────
-function ClaimButton({marketId,isRefund,t,onDone}){
+function ClaimButton({marketId,isRefund,t,onDone,walletType,walletId}){
   const [state,setState]=useState("idle");
   const [msg,setMsg]=useState("");
 
   const go=async()=>{
     setState("loading");
-    setMsg("Switching to Arc...");
     try{
-      const provider=new ethers.providers.Web3Provider(window.ethereum);
-      await provider.send("wallet_switchEthereumChain",[{chainId:ARC_CHAIN_ID}]);
-      const signer=provider.getSigner();
-      const contract=new ethers.Contract(CONTRACT_ADDRESS,CONTRACT_ABI,signer);
-      setMsg("Confirm in wallet...");
-      const tx=isRefund ? await contract.refund(marketId) : await contract.claimWinnings(marketId);
-      setMsg("Confirming on-chain...");
-      await tx.wait();
-      setState("done");
-      onDone(tx.hash);
+      const fnSig=isRefund?"refund(uint256)":"claimWinnings(uint256)";
+      if(walletType==="circle"){
+        setMsg("Confirming via Circle...");
+        const res=await fetch("/api/execute-trade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({walletId,contractAddress:CONTRACT_ADDRESS,abiFunctionSignature:fnSig,abiParameters:[String(marketId)]})});
+        const data=await res.json();
+        if(!res.ok)throw new Error(data.error||"Claim failed");
+        setState("done");
+        onDone(data.txHash||"");
+      }else{
+        setMsg("Switching to Arc...");
+        const provider=new ethers.providers.Web3Provider(window.ethereum);
+        await provider.send("wallet_switchEthereumChain",[{chainId:ARC_CHAIN_ID}]);
+        const signer=provider.getSigner();
+        const contract=new ethers.Contract(CONTRACT_ADDRESS,CONTRACT_ABI,signer);
+        setMsg("Confirm in wallet...");
+        const tx=isRefund ? await contract.refund(marketId) : await contract.claimWinnings(marketId);
+        setMsg("Confirming on-chain...");
+        await tx.wait();
+        setState("done");
+        onDone(tx.hash);
+      }
     }catch(e){
       setState("error");
       setMsg(e.code===4001?"Cancelled":e.reason||e.message?.slice(0,60)||"Failed");
@@ -569,7 +579,7 @@ function AdminPanel({t,account,onResolved,markets=[]}){
 }
 
 // ── PORTFOLIO WITH CLAIMING ───────────────────────────────────────────────────
-function Portfolio({t,account,positions}){
+function Portfolio({t,account,positions,walletType,walletId}){
   const [onChain,setOnChain]=useState({});
   const [loading,setLoading]=useState(false);
   const [claimed,setClaimed]=useState(()=>LS.get("arcana_claimed_v2",{}));
@@ -705,7 +715,7 @@ function Portfolio({t,account,positions}){
               <>
                 <div style={{fontSize:22,fontWeight:800,color:t.green,fontFamily:"monospace"}}>+${payout.toFixed(2)}</div>
                 <div style={{fontSize:11,color:t.textMuted,fontFamily:"monospace",textAlign:"right"}}>USDC payout</div>
-                <ClaimButton marketId={id} isRefund={false} t={t} onDone={(txHash)=>{
+                <ClaimButton marketId={id} isRefund={false} t={t} walletType={walletType} walletId={walletId} onDone={(txHash)=>{
                   const next={...claimed,[String(id)]:txHash};
                   setClaimed(next);LS.set("arcana_claimed_v2",next);
                 }}/>
@@ -719,7 +729,7 @@ function Portfolio({t,account,positions}){
                 <div style={{fontSize:16,fontWeight:700,color:t.amber,fontFamily:"monospace"}}>
                   ${g.positions.reduce((s,p)=>s+parseFloat(p.amt||0),0).toFixed(2)} refund
                 </div>
-                <ClaimButton marketId={id} isRefund={true} t={t} onDone={(txHash)=>{
+                <ClaimButton marketId={id} isRefund={true} t={t} walletType={walletType} walletId={walletId} onDone={(txHash)=>{
                   const next={...claimed,[String(id)]:txHash};
                   setClaimed(next);LS.set("arcana_claimed_v2",next);
                 }}/>
@@ -1576,7 +1586,7 @@ export default function ArcanaMarkets(){
         )}
 
         {page==="Portfolio"&&(
-          <Portfolio t={t} account={account} positions={positions}/>
+          <Portfolio t={t} account={account} positions={positions} walletType={walletType} walletId={circleWalletId}/>
         )}
 
         {page==="Leaderboard"&&(
