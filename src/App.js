@@ -1466,21 +1466,20 @@ function LiveMarketsGrid({ t, markets, loading, onTrade, cat, setCat, q, setQ })
         </div>
       </div>
 
-      <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"center",flexWrap:"wrap"}} className="filter-row">
-        <div style={{display:"flex",gap:5,flex:1,flexWrap:"wrap"}}>
-          {CATS.map(c=>(
-            <button key={c} onClick={()=>setCat(c)}
-              style={{padding:"6px 13px",background:cat===c?t.blue:t.surface,border:`1px solid ${cat===c?t.blue:t.border}`,borderRadius:20,color:cat===c?"#fff":t.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{c}</button>
-          ))}
-          <button onClick={()=>setCat("Resolved")}
-            style={{padding:"6px 13px",background:showResolved?t.textMuted:t.surface,border:`1px solid ${showResolved?t.textMuted:t.border}`,borderRadius:20,color:showResolved?t.surface:t.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
-            Resolved{pastCount>0?` (${pastCount})`:""}
-          </button>
-        </div>
-        <div style={{display:"flex",gap:8,flexShrink:0}}>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search..."
-            style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:"7px 12px",color:t.text,fontSize:13,outline:"none",width:160}}/>
-        </div>
+      <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}} className="filter-row">
+        {CATS.map(c=>(
+          <button key={c} onClick={()=>setCat(c)}
+            style={{padding:"6px 13px",background:cat===c?t.blue:t.surface,border:`1px solid ${cat===c?t.blue:t.border}`,borderRadius:20,color:cat===c?"#fff":t.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{c}</button>
+        ))}
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"center",flexWrap:"wrap",justifyContent:"space-between"}}>
+        <button onClick={()=>setCat(showResolved?"All":"Resolved")}
+          style={{padding:"6px 13px",background:showResolved?t.textMuted:t.surfaceAlt,border:`1px solid ${showResolved?t.textMuted:t.border}`,borderRadius:8,color:showResolved?t.surface:t.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
+          {showResolved?"← Back to active markets":`View Resolved${pastCount>0?` (${pastCount})`:""}`}
+        </button>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search..."
+          style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:"7px 12px",color:t.text,fontSize:13,outline:"none",width:160,flexShrink:0}}/>
       </div>
 
       {loading && markets.length === 0 && (
