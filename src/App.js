@@ -32,6 +32,7 @@ const CONTRACT_ABI = [
   "function refund(uint256 _marketId) external",
   "function yesShares(uint256, address) external view returns (uint256)",
   "function noShares(uint256, address) external view returns (uint256)",
+  "function claimed(uint256, address) external view returns (bool)",
   "function owner() external view returns (address)",
   "event SharesBought(address indexed buyer, uint256 indexed marketId, bool isYes, uint256 usdcAmount, uint256 shares)",
   "event MarketResolved(uint256 indexed marketId, bool yesWon)",
@@ -83,6 +84,15 @@ async function getUserShares(marketId, address) {
     ]);
     return { yes: Number(yes) / 1e6, no: Number(no) / 1e6 };
   } catch { return { yes: 0, no: 0 }; }
+}
+
+// ── GET CLAIMED STATUS ON-CHAIN ───────────────────────────────────────────────
+async function getUserClaimed(marketId, address) {
+  try {
+    const provider = new ethers.providers.JsonRpcProvider(ARC_RPC);
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+    return await contract.claimed(marketId, address);
+  } catch { return false; }
 }
 
 // ── GET CONTRACT OWNER ────────────────────────────────────────────────────────
@@ -582,7 +592,7 @@ function AdminPanel({t,account,onResolved,markets=[]}){
 function Portfolio({t,account,positions,walletType,walletId}){
   const [onChain,setOnChain]=useState({});
   const [loading,setLoading]=useState(false);
-  const [claimed,setClaimed]=useState(()=>LS.get("arcana_claimed_v2",{}));
+  const [justClaimedTx,setJustClaimedTx]=useState({});
 
   const fetchOnChain=useCallback(async()=>{
     if(!account||positions.length===0)return;
@@ -590,8 +600,8 @@ function Portfolio({t,account,positions,walletType,walletId}){
     const ids=[...new Set(positions.map(p=>p.marketId).filter(Boolean))];
     const results={};
     await Promise.all(ids.map(async id=>{
-      const [market,shares]=await Promise.all([getOnChainMarket(id),getUserShares(id,account)]);
-      results[id]={market,shares};
+      const [market,shares,hasClaimed]=await Promise.all([getOnChainMarket(id),getUserShares(id,account),getUserClaimed(id,account)]);
+      results[id]={market,shares,hasClaimed};
     }));
     setOnChain(results);
     setLoading(false);
@@ -669,7 +679,8 @@ function Portfolio({t,account,positions,walletType,walletId}){
     const winner=isWinner(id);
     const payout=calcPayout(id);
     const d=onChain[id];
-    const alreadyClaimed=claimed[String(id)];
+    const alreadyClaimed=!!d?.hasClaimed;
+    const claimTxHash=justClaimedTx[String(id)];
 
     const accentColor=status==="resolved"?(winner?t.green:t.red):status==="cancelled"?t.amber:t.blue;
     const accentBg=status==="resolved"?(winner?t.greenBg:t.redBg):status==="cancelled"?t.amberBg:t.blueDim;
@@ -716,8 +727,8 @@ function Portfolio({t,account,positions,walletType,walletId}){
                 <div style={{fontSize:22,fontWeight:800,color:t.green,fontFamily:"monospace"}}>+${payout.toFixed(2)}</div>
                 <div style={{fontSize:11,color:t.textMuted,fontFamily:"monospace",textAlign:"right"}}>USDC payout</div>
                 <ClaimButton marketId={id} isRefund={false} t={t} walletType={walletType} walletId={walletId} onDone={(txHash)=>{
-                  const next={...claimed,[String(id)]:txHash};
-                  setClaimed(next);LS.set("arcana_claimed_v2",next);
+                  setJustClaimedTx(prev=>({...prev,[String(id)]:txHash}));
+                  fetchOnChain();
                 }}/>
               </>
             )}
@@ -730,14 +741,17 @@ function Portfolio({t,account,positions,walletType,walletId}){
                   ${g.positions.reduce((s,p)=>s+parseFloat(p.amt||0),0).toFixed(2)} refund
                 </div>
                 <ClaimButton marketId={id} isRefund={true} t={t} walletType={walletType} walletId={walletId} onDone={(txHash)=>{
-                  const next={...claimed,[String(id)]:txHash};
-                  setClaimed(next);LS.set("arcana_claimed_v2",next);
+                  setJustClaimedTx(prev=>({...prev,[String(id)]:txHash}));
+                  fetchOnChain();
                 }}/>
               </>
             )}
-            {alreadyClaimed&&(
-              <a href={`https://testnet.arcscan.app/tx/${alreadyClaimed}`} target="_blank" rel="noreferrer"
+            {alreadyClaimed&&claimTxHash&&(
+              <a href={`https://testnet.arcscan.app/tx/${claimTxHash}`} target="_blank" rel="noreferrer"
                 style={{fontSize:11,color:t.blue,fontFamily:"monospace",textDecoration:"none"}}>↗ View claim TX</a>
+            )}
+            {alreadyClaimed&&!claimTxHash&&(
+              <span style={{fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>✓ Claimed</span>
             )}
             {status==="open"&&(
               <span style={{fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>Awaiting resolution</span>
