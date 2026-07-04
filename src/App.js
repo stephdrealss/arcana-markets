@@ -303,6 +303,92 @@ async function fetchWalletLiveHistory(walletAddr) {
   } catch { return []; }
 }
 
+// ── ON-CHAIN EVENT DATES (placed / resolved / claimed) FOR PORTFOLIO + HISTORY ─
+async function paginateContractLogs(topic0) {
+  const items = [];
+  let url = `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/logs?topic0=${topic0}`;
+  let pages = 0;
+  while (url && pages < 10) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) break;
+      const data = await res.json();
+      items.push(...(data.items || []));
+      url = data.next_page_params
+        ? `https://testnet.arcscan.app/api/v2/addresses/${CONTRACT_ADDRESS}/logs?topic0=${topic0}&${new URLSearchParams(data.next_page_params)}`
+        : null;
+    } catch { break; }
+    pages++;
+  }
+  return items;
+}
+
+async function fetchPortfolioTimeline(marketIds, account) {
+  const ids = new Set(marketIds.map(String));
+  const acct = account.toLowerCase();
+  const result = {};
+  ids.forEach(id => { result[id] = { placedAt: null, resolvedAt: null, claimedAt: null }; });
+  if (ids.size === 0) return result;
+
+  try {
+    // SharesBought(address indexed buyer, uint256 indexed marketId, bool isYes, uint256 usdcAmount, uint256 shares)
+    const items = await paginateContractLogs(ethers.utils.id("SharesBought(address,uint256,bool,uint256,uint256)"));
+    for (const item of items) {
+      const buyer = item.topics?.[1] ? ("0x" + item.topics[1].slice(-40)).toLowerCase() : null;
+      const mid = item.topics?.[2] ? String(parseInt(item.topics[2], 16)) : null;
+      if (mid && ids.has(mid) && buyer === acct) {
+        if (!result[mid].placedAt || new Date(item.timestamp) < new Date(result[mid].placedAt)) {
+          result[mid].placedAt = item.timestamp;
+        }
+      }
+    }
+  } catch {}
+
+  try {
+    // MarketResolved(uint256 indexed marketId, bool yesWon)
+    const items = await paginateContractLogs(ethers.utils.id("MarketResolved(uint256,bool)"));
+    for (const item of items) {
+      const mid = item.topics?.[1] ? String(parseInt(item.topics[1], 16)) : null;
+      if (mid && ids.has(mid)) result[mid].resolvedAt = item.timestamp;
+    }
+  } catch {}
+
+  try {
+    // WinningsClaimed(uint256 indexed marketId, address indexed claimer, uint256 amount)
+    const items = await paginateContractLogs(ethers.utils.id("WinningsClaimed(uint256,address,uint256)"));
+    for (const item of items) {
+      const mid = item.topics?.[1] ? String(parseInt(item.topics[1], 16)) : null;
+      const claimer = item.topics?.[2] ? ("0x" + item.topics[2].slice(-40)).toLowerCase() : null;
+      if (mid && ids.has(mid) && claimer === acct) result[mid].claimedAt = item.timestamp;
+    }
+  } catch {}
+
+  try {
+    // refund() emits no event — fall back to the wallet's own tx history
+    const url = `https://testnet.arcscan.app/api/v2/addresses/${account}/transactions?filter=to&smart_contract=${CONTRACT_ADDRESS}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      for (const tx of (data.items || [])) {
+        if (tx.method !== "refund" || tx.status !== "ok") continue;
+        const input = (tx.raw_input || tx.input || "").replace("0x", "");
+        if (input.length < 72) continue;
+        const mid = String(parseInt(input.slice(8, 72), 16));
+        if (ids.has(mid) && !result[mid].claimedAt) result[mid].claimedAt = tx.timestamp;
+      }
+    }
+  } catch {}
+
+  return result;
+}
+
+function fmtDate(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const d = typeof v === "number" ? new Date(v * 1000) : new Date(v);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 function buildLeaderboard(newTrades=[]) {
   const merged={};
   for(const row of LEADERBOARD_SEED) merged[row.fullAddr.toLowerCase()]={...row};
@@ -612,10 +698,14 @@ function Portfolio({t,account,positions,walletType,walletId}){
     setLoading(true);
     const ids=[...new Set(positions.map(p=>p.marketId).filter(Boolean))];
     const results={};
-    await Promise.all(ids.map(async id=>{
-      const [market,shares,hasClaimed]=await Promise.all([getOnChainMarket(id),getUserShares(id,account),getUserClaimed(id,account)]);
-      results[id]={market,shares,hasClaimed};
-    }));
+    const [,timeline]=await Promise.all([
+      Promise.all(ids.map(async id=>{
+        const [market,shares,hasClaimed]=await Promise.all([getOnChainMarket(id),getUserShares(id,account),getUserClaimed(id,account)]);
+        results[id]={market,shares,hasClaimed};
+      })),
+      fetchPortfolioTimeline(ids,account),
+    ]);
+    for(const id of ids){ if(results[id]) results[id].timeline=timeline[id]; }
     setOnChain(results);
     setLoading(false);
   },[account,positions]);
@@ -651,6 +741,7 @@ function Portfolio({t,account,positions,walletType,walletId}){
     if(!d?.market)return"open";
     if(d.market.cancelled)return"cancelled";
     if(d.market.resolved)return"resolved";
+    if(d.market.endTime>0&&d.market.endTime<nowSec())return"pending";
     return"open";
   };
 
@@ -680,10 +771,26 @@ function Portfolio({t,account,positions,walletType,walletId}){
     return false;
   };
 
+  // Most recent activity first: claimed > resolved > last bet placed > market end time
+  const lastActivityMs=(id)=>{
+    const d=onChain[id];
+    const tl=d?.timeline||{};
+    const toMs=(v)=>{
+      if(!v)return 0;
+      const dd=typeof v==="number"?new Date(v*1000):new Date(v);
+      const ms=dd.getTime();
+      return isNaN(ms)?0:ms;
+    };
+    const endMs=d?.market?.endTime?d.market.endTime*1000:0;
+    return Math.max(toMs(tl.claimedAt),toMs(tl.resolvedAt),toMs(tl.placedAt),endMs);
+  };
+  const byRecency=(a,b)=>lastActivityMs(b.marketId)-lastActivityMs(a.marketId);
+
   const groups=Object.values(grouped);
-  const resolved=groups.filter(g=>getStatus(g.marketId)==="resolved");
-  const cancelled=groups.filter(g=>getStatus(g.marketId)==="cancelled");
-  const open=groups.filter(g=>getStatus(g.marketId)==="open");
+  const resolved=groups.filter(g=>getStatus(g.marketId)==="resolved").sort(byRecency);
+  const pending=groups.filter(g=>getStatus(g.marketId)==="pending").sort(byRecency);
+  const cancelled=groups.filter(g=>getStatus(g.marketId)==="cancelled").sort(byRecency);
+  const open=groups.filter(g=>getStatus(g.marketId)==="open").sort(byRecency);
 
   const renderGroup=(g)=>{
     const id=g.marketId;
@@ -694,9 +801,14 @@ function Portfolio({t,account,positions,walletType,walletId}){
     const d=onChain[id];
     const alreadyClaimed=!!d?.hasClaimed;
     const claimTxHash=justClaimedTx[String(id)];
+    const tl=d?.timeline||{};
+    const placedDate=fmtDate(tl.placedAt);
+    const endedDate=d?.market?fmtDate(d.market.endTime):null;
+    const resolvedDate=fmtDate(tl.resolvedAt);
+    const claimedDate=fmtDate(tl.claimedAt);
 
-    const accentColor=status==="resolved"?(winner?t.green:t.red):status==="cancelled"?t.amber:t.blue;
-    const accentBg=status==="resolved"?(winner?t.greenBg:t.redBg):status==="cancelled"?t.amberBg:t.blueDim;
+    const accentColor=status==="resolved"?(winner?t.green:t.red):status==="pending"?t.amber:status==="cancelled"?t.amber:t.blue;
+    const accentBg=status==="resolved"?(winner?t.greenBg:t.redBg):status==="pending"?t.amberBg:status==="cancelled"?t.amberBg:t.blueDim;
 
     return(
       <div key={id} style={{background:t.surface,border:`1.5px solid ${winner&&!alreadyClaimed?t.greenBorder:t.border}`,borderRadius:12,padding:"18px 22px",marginBottom:12,transition:"all 0.15s"}}>
@@ -705,7 +817,7 @@ function Portfolio({t,account,positions,walletType,walletId}){
             {/* Status badges */}
             <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
               <span style={{fontSize:10,fontWeight:700,fontFamily:"monospace",color:accentColor,background:accentBg,padding:"3px 8px",borderRadius:4}}>
-                {status==="resolved"?(yw===null?"RESOLVED":yw?"✓ YES WON":"✕ NO WON"):status==="cancelled"?"CANCELLED":"OPEN"}
+                {status==="resolved"?(yw===null?"RESOLVED":yw?"✓ YES WON":"✕ NO WON"):status==="pending"?"ENDED — PENDING RESOLUTION":status==="cancelled"?"CANCELLED":"OPEN"}
               </span>
               {winner===true&&!alreadyClaimed&&<span style={{fontSize:10,fontWeight:700,color:t.green,background:t.greenBg,padding:"3px 8px",borderRadius:4,fontFamily:"monospace"}}>🏆 YOU WON</span>}
               {winner===false&&<span style={{fontSize:10,fontWeight:700,color:t.red,background:t.redBg,padding:"3px 8px",borderRadius:4,fontFamily:"monospace"}}>✕ YOU LOST</span>}
@@ -729,6 +841,16 @@ function Portfolio({t,account,positions,walletType,walletId}){
               <div style={{fontSize:11,fontFamily:"monospace",color:t.textLight}}>
                 Pool: YES ${d.market.yesPool.toFixed(2)} · NO ${d.market.noPool.toFixed(2)} · Total ${(d.market.yesPool+d.market.noPool).toFixed(2)} USDC
                 {d.shares&&<span> · Your shares: YES {d.shares.yes.toFixed(2)} / NO {d.shares.no.toFixed(2)}</span>}
+              </div>
+            )}
+
+            {/* Dates — from chain event timestamps */}
+            {(placedDate||endedDate||resolvedDate||claimedDate)&&(
+              <div style={{fontSize:11,fontFamily:"monospace",color:t.textLight,marginTop:6,display:"flex",gap:12,flexWrap:"wrap"}}>
+                {placedDate&&<span>Placed {placedDate}</span>}
+                {endedDate&&<span>Ended {endedDate}</span>}
+                {resolvedDate&&<span>Resolved {resolvedDate}</span>}
+                {claimedDate&&<span>Claimed {claimedDate}</span>}
               </div>
             )}
           </div>
@@ -766,8 +888,11 @@ function Portfolio({t,account,positions,walletType,walletId}){
             {alreadyClaimed&&!claimTxHash&&(
               <span style={{fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>✓ Claimed</span>
             )}
+            {status==="pending"&&(
+              <span style={{fontSize:11,color:t.amber,fontFamily:"monospace",fontWeight:700}}>⏳ Awaiting admin resolution</span>
+            )}
             {status==="open"&&(
-              <span style={{fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>Awaiting resolution</span>
+              <span style={{fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>Market still open</span>
             )}
           </div>
         </div>
@@ -790,7 +915,7 @@ function Portfolio({t,account,positions,walletType,walletId}){
 
       {/* Stats */}
       <div style={{display:"flex",gap:12,marginBottom:28,flexWrap:"wrap"}}>
-        {[["Total Invested",`$${totalInvested.toFixed(2)}`],["Open",open.length],["Resolved",resolved.length],["Cancelled",cancelled.length]].map(([l,v])=>(
+        {[["Total Invested",`$${totalInvested.toFixed(2)}`],["Open",open.length],["Pending",pending.length],["Resolved",resolved.length],["Cancelled",cancelled.length]].map(([l,v])=>(
           <div key={l} style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"14px 20px",minWidth:110}}>
             <div style={{fontSize:11,color:t.textLight,fontFamily:"monospace",marginBottom:4}}>{l}</div>
             <div style={{fontSize:18,fontWeight:800,fontFamily:"monospace",color:t.text}}>{v}</div>
@@ -802,6 +927,12 @@ function Portfolio({t,account,positions,walletType,walletId}){
         <>
           <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10}}>RESOLVED — CLAIM YOUR WINNINGS</div>
           {resolved.map(renderGroup)}
+        </>
+      )}
+      {pending.length>0&&(
+        <>
+          <div style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,letterSpacing:2,marginBottom:10,marginTop:24}}>PENDING RESOLUTION — MARKET ENDED, AWAITING ADMIN</div>
+          {pending.map(renderGroup)}
         </>
       )}
       {cancelled.length>0&&(
@@ -1393,7 +1524,7 @@ export default function ArcanaMarkets(){
     LS.set("arcana_last_wallet",null);
     LS.set("arcana_wallet_type",null);
     LS.set("arcana_circle_wallet_id",null);
-    setAccount(null);setWalletType(null);setCircleWalletId(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);if(window.ethereum){window.ethereum.request({method:"wallet_revokePermissions",params:[{eth_accounts:{}}]}).catch(()=>{});}
+    setAccount(null);setWalletType(null);setCircleWalletId(null);setUsdcBalance("0.00");setPositions([]);setIsAdmin(false);if(window.ethereum){window.ethereum.request({method:"wallet_revokePermissions",params:[{eth_accounts:{}}]}).catch(()=>{});}
   };
 
   useEffect(()=>{
@@ -1417,7 +1548,7 @@ export default function ArcanaMarkets(){
         if(LS.get("arcana_user_disconnected",false))return;
         const addr=accs[0]||null;
         if(addr){LS.set("arcana_user_disconnected",false);LS.set("arcana_last_wallet",addr);setAccount(addr);refreshBal(addr);loadWalletData(addr);checkOwner(addr);}
-        else{LS.set("arcana_last_wallet",null);setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsOwner(false);}
+        else{LS.set("arcana_last_wallet",null);setAccount(null);setUsdcBalance("0.00");setPositions([]);setIsAdmin(false);}
       };
       window.ethereum.on("accountsChanged",h);
       return()=>window.ethereum.removeListener("accountsChanged",h);
