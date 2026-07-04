@@ -1069,6 +1069,106 @@ function Activity({t,account,newTrades=[]}){
   );
 }
 
+// ── HISTORY — your own trades + claims/refunds, chronological ────────────────
+function History({t,account,positions}){
+  const [chainData,setChainData]=useState({});
+  const [loading,setLoading]=useState(false);
+
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      if(!account||positions.length===0){setChainData({});return;}
+      setLoading(true);
+      const ids=[...new Set(positions.map(p=>p.marketId).filter(Boolean))];
+      const results={};
+      const [,timeline]=await Promise.all([
+        Promise.all(ids.map(async id=>{
+          const [market,shares,hasClaimed]=await Promise.all([getOnChainMarket(id),getUserShares(id,account),getUserClaimed(id,account)]);
+          results[id]={market,shares,hasClaimed};
+        })),
+        fetchPortfolioTimeline(ids,account),
+      ]);
+      for(const id of ids){ if(results[id]) results[id].timeline=timeline[id]; }
+      if(!cancelled){setChainData(results);setLoading(false);}
+    })();
+    return()=>{cancelled=true;};
+  },[account,positions]);
+
+  const entries=React.useMemo(()=>{
+    const rows=[];
+    for(const p of positions){
+      if(!p.marketId)continue;
+      const d=chainData[p.marketId];
+      const time=d?.timeline?.placedAt||p.time||null;
+      rows.push({type:"trade",time,market:p.market,side:p.side,amt:parseFloat(p.amt||0),txHash:p.txHash});
+    }
+    for(const [id,d] of Object.entries(chainData)){
+      if(!d?.hasClaimed)continue;
+      const tl=d.timeline||{};
+      const isCancelled=!!d.market?.cancelled;
+      let amount=0;
+      if(isCancelled){
+        amount=(d.shares?.yes||0)+(d.shares?.no||0);
+      }else if(d.market?.resolved){
+        const total=d.market.yesPool+d.market.noPool;
+        amount=d.market.yesWon?(d.shares.yes>0?(d.shares.yes/d.market.yesPool)*total:0):(d.shares.no>0?(d.shares.no/d.market.noPool)*total:0);
+      }
+      const marketTitle=positions.find(p=>String(p.marketId)===String(id))?.market||`Market #${id}`;
+      rows.push({type:isCancelled?"refund":"claim",time:tl.claimedAt,market:marketTitle,amt:amount});
+    }
+    return rows.sort((a,b)=>{
+      const ta=a.time?new Date(typeof a.time==="number"?a.time*1000:a.time).getTime():0;
+      const tb=b.time?new Date(typeof b.time==="number"?b.time*1000:b.time).getTime():0;
+      return (isNaN(tb)?0:tb)-(isNaN(ta)?0:ta);
+    });
+  },[chainData,positions]);
+
+  if(!account) return(
+    <div style={{textAlign:"center",padding:"80px 20px"}}>
+      <div style={{fontSize:48,marginBottom:16}}>🔒</div>
+      <p style={{fontSize:15,color:t.textMuted}}>Connect your wallet to see your history</p>
+    </div>
+  );
+  if(positions.length===0) return(
+    <div style={{textAlign:"center",padding:"80px 20px"}}>
+      <div style={{fontSize:48,marginBottom:16}}>🕓</div>
+      <p style={{fontSize:15,color:t.textMuted}}>No trades yet — place your first trade!</p>
+    </div>
+  );
+
+  const TYPE_LABEL={trade:"TRADE",claim:"CLAIM",refund:"REFUND"};
+  const TYPE_COLOR={trade:t.blue,claim:t.green,refund:t.amber};
+
+  return(
+    <div style={{padding:"32px 0"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <h2 style={{fontSize:22,fontWeight:800,color:t.text}}>History</h2>
+        <span style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,background:t.blueDim,padding:"4px 10px",borderRadius:6}}>
+          {loading?"loading...":entries.length+" events"}
+        </span>
+      </div>
+      <p style={{fontSize:13,color:t.textMuted,marginBottom:24}}>
+        Your trades, claims and refunds — most recent first
+      </p>
+      <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,overflow:"hidden",maxHeight:600,overflowY:"auto"}}>
+        {entries.map((row,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 20px",borderBottom:i<entries.length-1?`1px solid ${t.border}`:"none"}}>
+            <span style={{fontSize:10,fontWeight:700,fontFamily:"monospace",color:TYPE_COLOR[row.type],background:t.surfaceAlt,padding:"3px 8px",borderRadius:4,minWidth:56,textAlign:"center",flexShrink:0}}>
+              {TYPE_LABEL[row.type]}
+            </span>
+            <span style={{flex:1,fontSize:12,color:t.text,minWidth:0}}>{row.market}</span>
+            {row.side&&<span style={{fontSize:11,fontFamily:"monospace",fontWeight:700,color:row.side==="YES"?t.green:t.red,flexShrink:0}}>{row.side}</span>}
+            <span style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,flexShrink:0}}>${row.amt.toFixed(2)}</span>
+            <span style={{fontSize:10,color:t.textMuted,fontFamily:"monospace",minWidth:90,textAlign:"right",flexShrink:0}}>{fmtDate(row.time)||"—"}</span>
+            {row.txHash&&<a href={`https://testnet.arcscan.app/tx/${row.txHash}`} target="_blank" rel="noreferrer"
+              style={{fontSize:10,color:t.blue,fontFamily:"monospace",textDecoration:"none",flexShrink:0}}>↗ TX</a>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── GRID CARD with resolved/cancelled state ───────────────────────────────────
 function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,isEnded}){
   const [hov,setHov]=useState(false);
@@ -1620,7 +1720,7 @@ export default function ArcanaMarkets(){
 
   const tick=chainMarkets[tickIdx];
 
-  const NAV_TABS=["Markets","Portfolio",...(isAdmin?["Admin"]:[]),"Leaderboard","Activity"];
+  const NAV_TABS=["Markets","Portfolio","History",...(isAdmin?["Admin"]:[]),"Leaderboard","Activity"];
 
   return(
     <div style={{minHeight:"100vh",background:t.bg,color:t.text,fontFamily:"'DM Sans',system-ui,sans-serif"}}>
@@ -1744,6 +1844,10 @@ export default function ArcanaMarkets(){
 
         {page==="Portfolio"&&(
           <Portfolio t={t} account={account} positions={positions} walletType={walletType} walletId={circleWalletId}/>
+        )}
+
+        {page==="History"&&(
+          <History t={t} account={account} positions={positions}/>
         )}
 
         {page==="Leaderboard"&&(
