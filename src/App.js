@@ -34,6 +34,7 @@ const CONTRACT_ABI = [
   "function noShares(uint256, address) external view returns (uint256)",
   "function claimed(uint256, address) external view returns (bool)",
   "function owner() external view returns (address)",
+  "function admins(address) external view returns (bool)",
   "event SharesBought(address indexed buyer, uint256 indexed marketId, bool isYes, uint256 usdcAmount, uint256 shares)",
   "event MarketResolved(uint256 indexed marketId, bool yesWon)",
   "event WinningsClaimed(uint256 indexed marketId, address indexed claimer, uint256 amount)",
@@ -96,12 +97,14 @@ async function getUserClaimed(marketId, address) {
 }
 
 // ── GET CONTRACT OWNER ────────────────────────────────────────────────────────
-async function getContractOwner() {
+// ── CHECK OWNER-OR-ADMIN (matches the contract's onlyAdmin modifier) ─────────
+async function getIsAdmin(address) {
   try {
     const provider = new ethers.providers.JsonRpcProvider(ARC_RPC);
     const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
-    return await contract.owner();
-  } catch { return null; }
+    const [owner, isAdmin] = await Promise.all([contract.owner(), contract.admins(address)]);
+    return (owner && owner.toLowerCase() === address.toLowerCase()) || isAdmin;
+  } catch { return false; }
 }
 
 // ── ALL MARKETS, READ DIRECTLY FROM THE V2 CONTRACT ───────────────────────────
@@ -1312,7 +1315,7 @@ export default function ArcanaMarkets(){
   const [newTrades,setNewTrades]=useState(()=>LS.get("arcana_new_trades",[]));
   const [livePrices,setLivePrices]=useState({});
   const [tickIdx,setTickIdx]=useState(0);
-  const [isOwner,setIsOwner]=useState(false);
+  const [isAdmin,setIsAdmin]=useState(false);
   const [chainMarkets,setChainMarkets]=useState([]);
   const [marketsLoading,setMarketsLoading]=useState(true);
   const [stats,setStats]=useState(()=>buildStats([]));const [dropdownOpen,setDropdownOpen]=useState(false); const [copied,setCopied]=useState(false); const [depositOpen,setDepositOpen]=useState(false); const [bridgeOpen,setBridgeOpen]=useState(false);
@@ -1322,11 +1325,10 @@ export default function ArcanaMarkets(){
 
   const refreshBal=async(addr)=>{setUsdcBalance(await getUsdcBalance(addr));};
 
-  // Check if connected wallet is contract owner
+  // Check if connected wallet is contract owner OR a pre-authorized admin
   const checkOwner=useCallback(async(addr)=>{
-    if(!addr){setIsOwner(false);return;}
-    const owner=await getContractOwner();
-    setIsOwner(owner&&owner.toLowerCase()===addr.toLowerCase());
+    if(!addr){setIsAdmin(false);return;}
+    setIsAdmin(await getIsAdmin(addr));
   },[]);
 
   const loadWalletData=useCallback(async(addr)=>{
@@ -1477,7 +1479,7 @@ export default function ArcanaMarkets(){
 
   const tick=chainMarkets[tickIdx];
 
-  const NAV_TABS=["Markets","Portfolio",...(isOwner?["Admin"]:[]),"Leaderboard","Activity"];
+  const NAV_TABS=["Markets","Portfolio",...(isAdmin?["Admin"]:[]),"Leaderboard","Activity"];
 
   return(
     <div style={{minHeight:"100vh",background:t.bg,color:t.text,fontFamily:"'DM Sans',system-ui,sans-serif"}}>
@@ -1591,7 +1593,7 @@ export default function ArcanaMarkets(){
       <div style={{maxWidth:1380,margin:"0 auto",padding:"0 20px 60px"}}>
 
         {page==="Admin"&&(
-          isOwner
+          isAdmin
             ?<AdminPanel t={t} account={account} onResolved={loadMarkets} markets={chainMarkets}/>
             :<div style={{textAlign:"center",padding:"80px 20px"}}>
               <div style={{fontSize:48,marginBottom:16}}>🚫</div>
