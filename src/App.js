@@ -9,6 +9,18 @@ const ARC_CHAIN_ID = "0x4cef52";
 const ARC_RPC =
   "https://rpc.testnet.arc.network";
 
+// ── LEGACY V1 CONTRACT — single-owner, superseded by the v2 multi-admin
+// contract above. Kept read/claim-only here so anyone with an old position
+// can still see and claim it. ABI pulled from the verified contract source.
+const V1_CONTRACT_ADDRESS = "0x443a47eF1025e047879b1BA08c94e6dedB354D54";
+const V1_ABI = [
+  "function marketCount() view returns (uint256)",
+  "function getMarket(uint256 _marketId) view returns (tuple(uint256 id,string title,string category,uint256 yesPool,uint256 noPool,uint256 endTime,bool resolved,bool yesWon,bool cancelled))",
+  "function positions(uint256, address) view returns (uint256 yesShares, uint256 noShares, bool claimed)",
+  "function claimWinnings(uint256 _marketId) external",
+  "function refund(uint256 _marketId) external",
+];
+
 // ── STORAGE HELPERS ───────────────────────────────────────────────────────────
 const LS = {
   get: (key, fallback = null) => {
@@ -92,6 +104,44 @@ async function fetchWalletMarketPositions(address) {
       .map((id, i) => ({ marketId: id, yes: Number(shares[i][0]) / 1e6, no: Number(shares[i][1]) / 1e6 }))
       .filter(p => p.yes > 0 || p.no > 0);
   } catch { return []; }
+}
+
+// ── LEGACY V1 — ground-truth position + market readers ────────────────────────
+async function fetchV1WalletPositions(address) {
+  try {
+    const provider = new ethers.providers.JsonRpcProvider(ARC_RPC);
+    const contract = new ethers.Contract(V1_CONTRACT_ADDRESS, V1_ABI, provider);
+    const count = Number(await contract.marketCount());
+    const ids = Array.from({ length: count }, (_, i) => i + 1);
+    const raw = await Promise.all(ids.map(id => contract.positions(id, address)));
+    return ids
+      .map((id, i) => ({
+        marketId: id,
+        yes: Number(raw[i].yesShares) / 1e6,
+        no: Number(raw[i].noShares) / 1e6,
+        claimed: raw[i].claimed,
+      }))
+      .filter(p => p.yes > 0 || p.no > 0);
+  } catch { return []; }
+}
+
+async function getV1Market(marketId) {
+  try {
+    const provider = new ethers.providers.JsonRpcProvider(ARC_RPC);
+    const contract = new ethers.Contract(V1_CONTRACT_ADDRESS, V1_ABI, provider);
+    const m = await contract.getMarket(marketId);
+    return {
+      id: Number(m.id),
+      title: m.title,
+      category: m.category,
+      yesPool: Number(m.yesPool) / 1e6,
+      noPool: Number(m.noPool) / 1e6,
+      endTime: Number(m.endTime),
+      resolved: m.resolved,
+      yesWon: m.yesWon,
+      cancelled: m.cancelled,
+    };
+  } catch { return null; }
 }
 
 // ── GET USER SHARES ON-CHAIN ──────────────────────────────────────────────────
@@ -1005,6 +1055,211 @@ function Portfolio({t,account,positions,walletType,walletId}){
   );
 }
 
+// ── LEGACY V1 CLAIM PAGE ───────────────────────────────────────────────────────
+function LegacyClaim({t,account,walletType,walletId}){
+  const [onChain,setOnChain]=useState({});
+  const [loading,setLoading]=useState(false);
+  const [hasLoaded,setHasLoaded]=useState(false);
+  const [txState,setTxState]=useState({});
+
+  const fetchOnChain=useCallback(async()=>{
+    if(!account)return;
+    setLoading(true);
+    try{
+      const walletPositions=await fetchV1WalletPositions(account);
+      const results={};
+      await Promise.all(walletPositions.map(async p=>{
+        const market=await getV1Market(p.marketId);
+        results[p.marketId]={market,shares:{yes:p.yes,no:p.no},hasClaimed:p.claimed};
+      }));
+      setOnChain(results);
+    } finally {
+      setLoading(false);
+      setHasLoaded(true);
+    }
+  },[account]);
+
+  useEffect(()=>{fetchOnChain();},[fetchOnChain]);
+
+  const claimOrRefund=async(marketId,isRefund)=>{
+    setTxState(prev=>({...prev,[marketId]:{status:"pending",msg:isRefund?"Requesting refund...":"Claiming winnings..."}}));
+    try{
+      const fnSig=isRefund?"refund(uint256)":"claimWinnings(uint256)";
+      let hash="";
+      if(walletType==="circle"){
+        const res=await fetch("/api/execute-trade",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({walletId,contractAddress:V1_CONTRACT_ADDRESS,abiFunctionSignature:fnSig,abiParameters:[String(marketId)]})});
+        const data=await res.json();
+        if(!res.ok)throw new Error(data.error||"Transaction failed");
+        hash=data.txHash||"";
+      }else{
+        const provider=new ethers.providers.Web3Provider(window.ethereum);
+        await provider.send("wallet_switchEthereumChain",[{chainId:ARC_CHAIN_ID}]);
+        const signer=provider.getSigner();
+        const contract=new ethers.Contract(V1_CONTRACT_ADDRESS,V1_ABI,signer);
+        const tx=isRefund?await contract.refund(marketId):await contract.claimWinnings(marketId);
+        await tx.wait();
+        hash=tx.hash;
+      }
+      setTxState(prev=>({...prev,[marketId]:{status:"done",msg:"Confirmed",txHash:hash}}));
+      fetchOnChain();
+    }catch(e){
+      setTxState(prev=>({...prev,[marketId]:{status:"error",msg:e.code===4001?"Cancelled":e.reason||e.message?.slice(0,80)||"Failed"}}));
+    }
+  };
+
+  if(!account) return(
+    <div style={{padding:"32px 0"}}>
+      <LegacyHeader t={t}/>
+      <div style={{textAlign:"center",padding:"60px 20px"}}>
+        <div style={{fontSize:48,marginBottom:16}}>🔒</div>
+        <p style={{fontSize:15,color:t.textMuted}}>Connect your wallet (top right) to see your v1 positions</p>
+      </div>
+    </div>
+  );
+  if(!hasLoaded) return(
+    <div style={{padding:"32px 0"}}>
+      <LegacyHeader t={t}/>
+      <div style={{textAlign:"center",padding:"60px 20px"}}>
+        <p style={{fontSize:15,color:t.textMuted}}>Reading your v1 positions on-chain…</p>
+      </div>
+    </div>
+  );
+
+  const ids=Object.keys(onChain);
+  const getStatus=(id)=>{
+    const d=onChain[id];
+    if(!d?.market)return"open";
+    if(d.market.cancelled)return"cancelled";
+    if(d.market.resolved)return"resolved";
+    if(d.market.endTime>0&&d.market.endTime<nowSec())return"pending";
+    return"open";
+  };
+  const yesWonFor=(id)=>{
+    const d=onChain[id];
+    if(!d?.market||!d.market.resolved)return null;
+    return d.market.yesWon;
+  };
+  const calcPayout=(id)=>{
+    const d=onChain[id];
+    if(!d?.market||!d?.shares)return 0;
+    const {yesPool,noPool}=d.market;
+    const total=yesPool+noPool;
+    const yw=yesWonFor(id);
+    if(yw===null)return 0;
+    if(yw) return yesPool>0?(d.shares.yes/yesPool)*total:0;
+    return noPool>0?(d.shares.no/noPool)*total:0;
+  };
+  const isWinner=(id)=>{
+    const d=onChain[id];
+    const yw=yesWonFor(id);
+    if(yw===null||!d?.shares)return null;
+    if(yw&&d.shares.yes>0)return true;
+    if(!yw&&d.shares.no>0)return true;
+    return false;
+  };
+
+  const renderCard=(id)=>{
+    const d=onChain[id];
+    const status=getStatus(id);
+    const yw=yesWonFor(id);
+    const winner=isWinner(id);
+    const payout=calcPayout(id);
+    const alreadyClaimed=!!d?.hasClaimed;
+    const tx=txState[id];
+    const accentColor=status==="resolved"?(winner?t.green:t.red):status==="pending"?t.amber:status==="cancelled"?t.amber:t.blue;
+    const accentBg=status==="resolved"?(winner?t.greenBg:t.redBg):status==="pending"?t.amberBg:status==="cancelled"?t.amberBg:t.blueDim;
+
+    return(
+      <div key={id} style={{background:t.surface,border:`1.5px solid ${winner&&!alreadyClaimed?t.greenBorder:t.border}`,borderRadius:12,padding:"18px 22px",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,fontWeight:700,fontFamily:"monospace",color:accentColor,background:accentBg,padding:"3px 8px",borderRadius:4}}>
+                {status==="resolved"?(yw===null?"RESOLVED":yw?"✓ YES WON":"✕ NO WON"):status==="pending"?"AWAITING RESOLUTION":status==="cancelled"?"CANCELLED":"OPEN"}
+              </span>
+              {winner===true&&!alreadyClaimed&&<span style={{fontSize:10,fontWeight:700,color:t.green,background:t.greenBg,padding:"3px 8px",borderRadius:4,fontFamily:"monospace"}}>🏆 YOU WON</span>}
+              {winner===false&&<span style={{fontSize:10,fontWeight:700,color:t.red,background:t.redBg,padding:"3px 8px",borderRadius:4,fontFamily:"monospace"}}>✕ YOU LOST</span>}
+              {alreadyClaimed&&<span style={{fontSize:10,fontWeight:700,color:t.green,background:t.greenBg,padding:"3px 8px",borderRadius:4,fontFamily:"monospace"}}>✓ CLAIMED</span>}
+            </div>
+            <p style={{fontSize:14,fontWeight:700,color:t.text,margin:"0 0 10px",lineHeight:1.4}}>#{id} {d?.market?.title||`Market #${id}`}</p>
+            <div style={{fontSize:11,fontFamily:"monospace",color:t.textLight}}>
+              Your shares: YES ${d.shares.yes.toFixed(2)} / NO ${d.shares.no.toFixed(2)}
+              {d?.market&&<span> · Pool: YES ${d.market.yesPool.toFixed(2)} · NO ${d.market.noPool.toFixed(2)}</span>}
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end",flexShrink:0}}>
+            {status==="resolved"&&winner===true&&!alreadyClaimed&&(
+              <>
+                <div style={{fontSize:22,fontWeight:800,color:t.green,fontFamily:"monospace"}}>+${payout.toFixed(2)}</div>
+                <button onClick={()=>claimOrRefund(id,false)} disabled={tx?.status==="pending"}
+                  style={{padding:"9px 18px",background:t.green,color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"monospace"}}>
+                  {tx?.status==="pending"?"CLAIMING...":"CLAIM →"}
+                </button>
+              </>
+            )}
+            {status==="resolved"&&winner===false&&(
+              <div style={{fontSize:13,color:t.red,fontFamily:"monospace",fontWeight:700}}>No payout</div>
+            )}
+            {status==="cancelled"&&!alreadyClaimed&&(
+              <>
+                <div style={{fontSize:16,fontWeight:700,color:t.amber,fontFamily:"monospace"}}>${(d.shares.yes+d.shares.no).toFixed(2)} refund</div>
+                <button onClick={()=>claimOrRefund(id,true)} disabled={tx?.status==="pending"}
+                  style={{padding:"9px 18px",background:t.amber,color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"monospace"}}>
+                  {tx?.status==="pending"?"REFUNDING...":"REFUND →"}
+                </button>
+              </>
+            )}
+            {alreadyClaimed&&<span style={{fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>✓ Claimed</span>}
+            {status==="pending"&&<span style={{fontSize:11,color:t.amber,fontFamily:"monospace",fontWeight:700}}>⏳ Awaiting resolution</span>}
+            {status==="open"&&<span style={{fontSize:11,color:t.textMuted,fontFamily:"monospace"}}>Market still open</span>}
+            {tx&&tx.status==="done"&&<a href={`https://testnet.arcscan.app/tx/${tx.txHash}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:t.blue,fontFamily:"monospace",textDecoration:"none"}}>↗ View TX</a>}
+            {tx&&tx.status==="error"&&<span style={{fontSize:11,color:t.red,fontFamily:"monospace"}}>✕ {tx.msg}</span>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return(
+    <div style={{padding:"32px 0"}}>
+      <LegacyHeader t={t}/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h2 style={{fontSize:20,fontWeight:800,color:t.text}}>Your v1 Positions</h2>
+        <button onClick={fetchOnChain} disabled={loading}
+          style={{padding:"6px 14px",background:t.blueDim,border:`1px solid ${t.blueBorder}`,borderRadius:8,color:t.blue,fontSize:11,fontFamily:"monospace",cursor:"pointer"}}>
+          {loading?"SYNCING...":"↻ REFRESH"}
+        </button>
+      </div>
+      {ids.length===0?(
+        <div style={{textAlign:"center",padding:"60px 20px"}}>
+          <div style={{fontSize:48,marginBottom:16}}>📊</div>
+          <p style={{fontSize:15,color:t.textMuted}}>No positions found on the v1 contract for this wallet.</p>
+        </div>
+      ):ids.map(renderCard)}
+    </div>
+  );
+}
+
+function LegacyHeader({t}){
+  return(
+    <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"20px 24px",marginBottom:24}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:t.text}}>Legacy v1 Contract Claims</h1>
+        <span style={{fontSize:10,fontFamily:"monospace",color:t.amber,background:t.amberBg,border:`1px solid ${t.amber}`,padding:"3px 8px",borderRadius:4,fontWeight:700}}>DEPRECATED</span>
+      </div>
+      <p style={{fontSize:13,color:t.textMuted,lineHeight:1.6,marginBottom:8}}>
+        Arcana Markets moved to a new contract in July 2026. This page reads directly from the
+        old, single-owner v1 contract — <code style={{fontFamily:"monospace",fontSize:12}}>{V1_CONTRACT_ADDRESS}</code> —
+        so anyone with a position there can still see it and claim what they're owed.
+      </p>
+      <p style={{fontSize:12,color:t.textLight,fontFamily:"monospace"}}>
+        Connect the wallet you traded with on v1 above. Winning positions on resolved markets can be
+        claimed here; positions on cancelled markets can be refunded 1:1.
+      </p>
+    </div>
+  );
+}
+
 // ── LEADERBOARD ───────────────────────────────────────────────────────────────
 function Leaderboard({t,account,newTrades=[]}){
   const [data,setData]=useState(()=>buildLeaderboard([]));
@@ -1415,6 +1670,7 @@ function parseRoute(){
   if(m) return {type:"market", id:Number(m[1])};
   m = path.match(/^\/markets\/([a-z0-9-]+)\/?$/);
   if(m) return {type:"category", slug:m[1]};
+  if(/^\/legacy\/?$/.test(path)) return {type:"legacy"};
   return {type:"home"};
 }
 
@@ -1543,7 +1799,7 @@ function LiveMarketsGrid({ t, markets, loading, onTrade, cat, setCat, q, setQ })
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function ArcanaMarkets(){
   const [dark,setDark]=useState(()=>LS.get("arcana_theme",false));
-  const [page,setPage]=useState("Markets");
+  const [page,setPage]=useState(()=>parseRoute().type==="legacy"?"Legacy":"Markets");
   const [cat,setCat]=useState("All");
   const [q,setQ]=useState("");
   const [active,setActive]=useState(null);
@@ -1691,12 +1947,14 @@ export default function ArcanaMarkets(){
   // ── SHAREABLE LINKS — deep-link routing ─────────────────────────────────────
   useEffect(()=>{ chainMarketsRef.current=chainMarkets; },[chainMarkets]);
 
-  // Handle a /markets/:category deep link on first load (no chain data needed)
+  // Handle a /markets/:category or /legacy deep link on first load (no chain data needed)
   useEffect(()=>{
     const route=parseRoute();
     if(route.type==="category"){
       const c=CAT_SLUGS[route.slug];
       if(c){ setCat(c); setPage("Markets"); }
+    } else if(route.type==="legacy"){
+      setPage("Legacy");
     }
   },[]);
 
@@ -1711,12 +1969,17 @@ export default function ArcanaMarkets(){
     marketRouteHandled.current=true;
   },[chainMarkets]);
 
-  // Keep the URL in sync with the selected category (while no market modal is open)
+  // Keep the URL in sync with the selected category — only while actually on
+  // the Markets page. Also backs off if the live URL is mid-flight loading a
+  // /market/:id deep link (chainMarkets hasn't resolved yet, so `active` isn't
+  // set as truthy quite yet) — otherwise this would clobber it back to "/"
+  // before the deep-link effect gets a chance to open it.
   useEffect(()=>{
-    if(active)return;
+    if(active||page!=="Markets")return;
+    if(parseRoute().type==="market")return;
     const path=cat&&cat!=="All"&&cat!=="Resolved"?`/markets/${slugifyCat(cat)}`:"/";
     if(window.location.pathname!==path) window.history.replaceState({},"",path);
-  },[cat,active]);
+  },[cat,active,page]);
 
   // Browser back/forward
   useEffect(()=>{
@@ -1725,8 +1988,11 @@ export default function ArcanaMarkets(){
       if(route.type==="market"){
         const found=chainMarketsRef.current.find(mm=>Number(mm.id)===route.id);
         if(found){ setActive(found); setTradeSide(null); }
+      }else if(route.type==="legacy"){
+        setPage("Legacy");
       }else{
         setActive(null); setTradeSide(null);
+        setPage("Markets");
         setCat(route.type==="category"?(CAT_SLUGS[route.slug]||"All"):"All");
       }
     };
@@ -1933,6 +2199,10 @@ export default function ArcanaMarkets(){
           <Activity t={t} account={account} newTrades={newTrades}/>
         )}
 
+        {page==="Legacy"&&(
+          <LegacyClaim t={t} account={account} walletType={walletType} walletId={circleWalletId}/>
+        )}
+
         {page==="Markets"&&(
           <>
             <div style={{padding:"44px 0 32px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:32,flexWrap:"wrap"}}>
@@ -1988,6 +2258,12 @@ export default function ArcanaMarkets(){
 
       <footer style={{borderTop:`1px solid ${t.border}`,padding:20,textAlign:"center",background:t.bg}}>
         <p style={{fontSize:11,fontFamily:"monospace",color:t.textLight}}>✦ ARCANA.MARKETS · ARC TESTNET · {CONTRACT_ADDRESS.slice(0,10)}…</p>
+        <p style={{marginTop:6}}>
+          <a href="/legacy" onClick={e=>{e.preventDefault();setPage("Legacy");window.history.pushState({},"","/legacy");}}
+            style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,textDecoration:"underline"}}>
+            Have a position on the old v1 contract? Claim it here →
+          </a>
+        </p>
       </footer>
 
       {depositOpen&&account&&(   <div onClick={()=>setDepositOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(4px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>     <div onClick={e=>e.stopPropagation()} style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:20,width:"100%",maxWidth:420,padding:24}}>       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>         <h3 style={{fontSize:17,fontWeight:800,color:t.text}}>Deposit USDC</h3>         <button onClick={()=>setDepositOpen(false)} style={{background:"none",border:"none",color:t.textMuted,fontSize:22,cursor:"pointer"}}>✕</button>       </div>       <div style={{background:t.greenBg,border:`1px solid ${t.greenBorder}`,borderRadius:12,padding:"14px 16px",marginBottom:16}}>         <div style={{fontSize:11,color:t.textMuted,fontFamily:"monospace",marginBottom:4}}>YOUR ARC WALLET BALANCE</div>         <div style={{fontSize:28,fontWeight:800,color:t.green,fontFamily:"monospace"}}>${usdcBalance} USDC</div>       </div>       <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"14px 16px",marginBottom:12}}>         <div style={{fontSize:11,color:t.textMuted,fontFamily:"monospace",marginBottom:8}}>YOUR WALLET ADDRESS</div>         <div style={{fontSize:12,color:t.text,fontFamily:"monospace",wordBreak:"break-all",marginBottom:8}}>{account}</div>         <button onClick={()=>{navigator.clipboard.writeText(account).then(()=>{const btn=document.getElementById('dep-copy');if(btn){btn.innerText='✓ Copied!';setTimeout(()=>{btn.innerText='📋 Copy Address';},2000);}});}} id="dep-copy" style={{padding:"8px 14px",background:t.blueDim,border:`1px solid ${t.blueBorder}`,borderRadius:8,color:t.blue,fontSize:12,fontFamily:"monospace",fontWeight:700,cursor:"pointer"}}>📋 Copy Address</button>       </div>       <a href="https://faucet.circle.com" target="_blank" rel="noreferrer" style={{display:"block",padding:"14px",background:t.blue,color:"#fff",border:"none",borderRadius:10,fontWeight:800,fontSize:14,fontFamily:"monospace",textAlign:"center",textDecoration:"none"}}>🚰 Get Testnet USDC from Faucet</a>     </div>   </div> )} {bridgeOpen&&account&&(   <div onClick={()=>setBridgeOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(4px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>     <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480}}>       <BridgePanel t={t} account={account} walletType={walletType} walletId={circleWalletId} arcAddress={account} userId={account?`arcana_${account.toLowerCase().replace(/[^a-z0-9]/g,"_")}`:""}/>       <button onClick={()=>setBridgeOpen(false)} style={{width:"100%",padding:"12px",background:t.surface,border:`1px solid ${t.border}`,borderRadius:10,color:t.textMuted,fontSize:13,cursor:"pointer",marginTop:8,fontFamily:"monospace"}}>Close</button>     </div>   </div> )} {active&&(
