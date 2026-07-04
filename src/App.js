@@ -696,7 +696,7 @@ function AdminPanel({t,account,onResolved,markets=[],walletType,walletId}){
       <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,padding:"20px 24px",marginBottom:16}}>
         <h3 style={{fontSize:15,fontWeight:700,color:t.text,marginBottom:6}}>Cancel Market</h3>
         <p style={{fontSize:12,color:t.textMuted,fontFamily:"monospace",marginBottom:14}}>Cancels the market — all traders get a full USDC refund.</p>
-        <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
           <div>
             <label style={{fontSize:11,color:t.textMuted,fontFamily:"monospace",display:"block",marginBottom:4}}>MARKET ID</label>
             <input value={cancelId} onChange={e=>setCancelId(e.target.value)} placeholder="e.g. 48"
@@ -1102,18 +1102,18 @@ function Activity({t,account,newTrades=[]}){
       </p>
       <div style={{background:t.surface,border:`1.5px solid ${t.border}`,borderRadius:12,overflow:"hidden",maxHeight:600,overflowY:"auto"}}>
         {allActivity.map((row,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 20px",borderBottom:i<allActivity.length-1?`1px solid ${t.border}`:"none",background:account&&row.from?.toLowerCase()===account?.toLowerCase()?t.blueDim:"transparent"}}>
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8,rowGap:4,padding:"12px 20px",flexWrap:"wrap",borderBottom:i<allActivity.length-1?`1px solid ${t.border}`:"none",background:account&&row.from?.toLowerCase()===account?.toLowerCase()?t.blueDim:"transparent"}}>
             <div style={{width:7,height:7,borderRadius:"50%",background:t.green,flexShrink:0}}/>
-            <span style={{fontSize:12,fontFamily:"monospace",color:t.text,minWidth:110,flexShrink:0,fontWeight:600}}>
+            <span style={{fontSize:12,fontFamily:"monospace",color:t.text,flexShrink:0,fontWeight:600}}>
               {row.shortAddr}
               {account&&row.from?.toLowerCase()===account?.toLowerCase()&&
                 <span style={{marginLeft:6,fontSize:9,color:t.blue,background:t.blueDim,padding:"1px 5px",borderRadius:3}}>YOU</span>
               }
             </span>
-            <span style={{flex:1,fontSize:12,color:t.text}}>{row.market||"Arcana Markets"}</span>
+            <span style={{flex:"1 1 140px",minWidth:0,fontSize:12,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.market||"Arcana Markets"}</span>
             {row.side&&<span style={{fontSize:11,fontFamily:"monospace",fontWeight:700,color:row.side==="YES"?t.green:t.red,flexShrink:0}}>{row.side}</span>}
             {row.usdc>0&&<span style={{fontSize:11,fontFamily:"monospace",color:t.textMuted,flexShrink:0}}>${row.usdc}</span>}
-            <span style={{fontSize:10,color:t.textMuted,fontFamily:"monospace",minWidth:100,textAlign:"right",flexShrink:0}}>{row.time}</span>
+            <span style={{fontSize:10,color:t.textMuted,fontFamily:"monospace",flexShrink:0,marginLeft:"auto"}}>{row.time}</span>
             <a href={`https://testnet.arcscan.app/tx/${row.txHash}`} target="_blank" rel="noreferrer"
               style={{fontSize:10,color:t.blue,fontFamily:"monospace",textDecoration:"none",flexShrink:0}}>↗ TX</a>
           </div>
@@ -1196,7 +1196,7 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,
         ):(
           <div style={{display:"flex",gap:8}}>
             {[["YES",yes,t.green,t.greenBg,t.greenBorder],["NO",no,t.red,t.redBg,t.redBorder]].map(([lbl,odds,col,bg,border])=>(
-              <button key={lbl} onClick={e=>{e.stopPropagation();onTrade(m,lbl);}}
+              <button key={lbl} className="buy-btn" onClick={e=>{e.stopPropagation();onTrade(m,lbl);}}
                 style={{flex:1,padding:"9px 0",background:bg,border:`1.5px solid ${border}`,borderRadius:8,color:col,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"monospace"}}>
                 {lbl} {odds}¢
               </button>
@@ -1358,7 +1358,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
               {loading&&<div style={{background:t.blueDim,border:`1px solid ${t.blueBorder}`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:t.blue,fontFamily:"monospace"}}>⏳ {loadingMsg}</div>}
               <div style={{display:"flex",background:t.bg,borderRadius:10,padding:4,marginBottom:14}}>
                 {["YES","NO"].map(s=>(
-                  <button key={s} onClick={()=>setSide(s)} style={{flex:1,padding:"8px",borderRadius:8,border:"none",background:side===s?(s==="YES"?t.green:t.red):"transparent",color:side===s?"#fff":t.textMuted,fontWeight:700,cursor:"pointer",fontSize:13,transition:"all 0.15s"}}>{s}</button>
+                  <button key={s} className="side-btn" onClick={()=>setSide(s)} style={{flex:1,padding:"8px",borderRadius:8,border:"none",background:side===s?(s==="YES"?t.green:t.red):"transparent",color:side===s?"#fff":t.textMuted,fontWeight:700,cursor:"pointer",fontSize:13,transition:"all 0.15s"}}>{s}</button>
                 ))}
               </div>
               <div style={{marginBottom:14}}>
@@ -1472,10 +1472,10 @@ function LiveMarketsGrid({ t, markets, loading, onTrade, cat, setCat, q, setQ })
         </div>
       </div>
 
-      <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}} className="filter-row">
+      <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}} className="cat-pills">
         {CATS.map(c=>(
           <button key={c} onClick={()=>setCat(c)}
-            style={{padding:"6px 13px",background:cat===c?t.blue:t.surface,border:`1px solid ${cat===c?t.blue:t.border}`,borderRadius:20,color:cat===c?"#fff":t.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{c}</button>
+            style={{padding:"6px 13px",background:cat===c?t.blue:t.surface,border:`1px solid ${cat===c?t.blue:t.border}`,borderRadius:20,color:cat===c?"#fff":t.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{c}</button>
         ))}
       </div>
 
@@ -1567,6 +1567,7 @@ export default function ArcanaMarkets(){
   const [chainMarkets,setChainMarkets]=useState([]);
   const [marketsLoading,setMarketsLoading]=useState(true);
   const [stats,setStats]=useState(()=>buildStats([]));const [dropdownOpen,setDropdownOpen]=useState(false); const [copied,setCopied]=useState(false); const [depositOpen,setDepositOpen]=useState(false); const [bridgeOpen,setBridgeOpen]=useState(false);
+  const [mobileNavOpen,setMobileNavOpen]=useState(false);
 
   const t=dark?THEMES.dark:THEMES.light;
   const toggleTheme=()=>{const n=!dark;setDark(n);LS.set("arcana_theme",n);};
@@ -1780,15 +1781,23 @@ export default function ArcanaMarkets(){
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
+        html,body{overflow-x:hidden;max-width:100%;}
+        #root{overflow-x:hidden;}
+        img,svg{max-width:100%;}
         .card{transition:all 0.18s;}
+        .cat-pills::-webkit-scrollbar{display:none;}
         @media(max-width:640px){
           .nav-links{display:none!important;}
+          .mobile-menu-btn{display:flex!important;}
           .hero-stats{flex-direction:column!important;}
           .top-movers{grid-template-columns:1fr 1fr!important;}
           .markets-grid{grid-template-columns:1fr!important;}
-          .filter-row{flex-direction:column!important;}
           .nav-right{gap:6px!important;}
           .usdc-badge{display:none!important;}
+          .testnet-badge{display:none!important;}
+          .cat-pills{flex-wrap:nowrap!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;}
+          .buy-btn{padding:13px 0!important;font-size:13px!important;}
+          .side-btn{padding:12px!important;}
         }
         @media(max-width:480px){
           .hero-title{font-size:28px!important;}
@@ -1799,7 +1808,11 @@ export default function ArcanaMarkets(){
       {/* NAV */}
       <nav style={{position:"sticky",top:0,zIndex:100,background:t.navBg,borderBottom:`1px solid ${t.border}`}}>
         <div style={{maxWidth:1380,margin:"0 auto",padding:"0 20px",display:"flex",alignItems:"center",gap:16,height:56}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,cursor:"pointer"}} onClick={()=>setPage("Markets")}>
+          <button className="mobile-menu-btn" onClick={()=>setMobileNavOpen(o=>!o)}
+            style={{display:"none",background:"none",border:`1px solid ${t.border}`,borderRadius:8,width:38,height:38,flexShrink:0,cursor:"pointer",alignItems:"center",justifyContent:"center",fontSize:18,color:t.text}}>
+            {mobileNavOpen?"✕":"☰"}
+          </button>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,cursor:"pointer"}} onClick={()=>{setPage("Markets");setMobileNavOpen(false);}}>
             <div style={{width:32,height:32,borderRadius:10,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <rect x="4" y="4" width="16" height="16" rx="1" transform="rotate(45 12 12)" stroke="white" strokeWidth="2.5" fill="none"/>
@@ -1807,7 +1820,7 @@ export default function ArcanaMarkets(){
               </svg>
             </div>
             <span style={{fontSize:17,fontWeight:800,letterSpacing:-0.5,color:t.text}}>arcana</span>
-            <span style={{fontSize:9,background:t.blueDim,color:t.blue,border:`1px solid ${t.blueBorder}`,padding:"2px 6px",borderRadius:4,fontFamily:"monospace",fontWeight:700}}>TESTNET</span>
+            <span className="testnet-badge" style={{fontSize:9,background:t.blueDim,color:t.blue,border:`1px solid ${t.blueBorder}`,padding:"2px 6px",borderRadius:4,fontFamily:"monospace",fontWeight:700}}>TESTNET</span>
           </div>
           <div className="nav-links" style={{display:"flex",gap:1,overflowX:"auto",flex:1}}>
             {NAV_TABS.map(n=>(
@@ -1861,6 +1874,19 @@ export default function ArcanaMarkets(){
                       )}
           </div>
         </div>
+        {mobileNavOpen&&(
+          <>
+            <div onClick={()=>setMobileNavOpen(false)} style={{position:"fixed",inset:0,top:56,zIndex:98,background:"rgba(0,0,0,0.4)"}}/>
+            <div className="mobile-nav-drawer" style={{position:"absolute",top:"100%",left:0,right:0,background:t.surface,borderBottom:`1px solid ${t.border}`,padding:"8px 12px",display:"flex",flexDirection:"column",gap:2,zIndex:99,boxShadow:"0 12px 24px rgba(0,0,0,0.2)"}}>
+              {NAV_TABS.map(n=>(
+                <button key={n} onClick={()=>{setPage(n);setMobileNavOpen(false);}}
+                  style={{textAlign:"left",padding:"14px 16px",background:page===n?t.blueDim:"none",border:"none",borderRadius:8,color:page===n?t.blue:n==="Admin"?t.purple:t.text,fontSize:15,fontWeight:600,cursor:"pointer"}}>
+                  {n}{n==="Portfolio"&&positions.length>0?` (${positions.length})`:""}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </nav>
 
       {/* TICKER */}
