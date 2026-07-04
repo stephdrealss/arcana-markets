@@ -64,6 +64,8 @@ async function getOnChainMarket(marketId) {
     if (Number(m.id) === 0 && Number(m.endTime) === 0) return null; // market doesn't exist
     return {
       id: Number(m.id),
+      title: m.title,
+      category: m.category,
       yesPool: Number(m.yesPool) / 1e6,
       noPool: Number(m.noPool) / 1e6,
       endTime: Number(m.endTime),
@@ -72,6 +74,24 @@ async function getOnChainMarket(marketId) {
       yesWon: m.yesWon,
     };
   } catch { return null; }
+}
+
+// ── GROUND TRUTH: every market this wallet holds shares in, read directly ────
+// on-chain (marketCount() + yesShares/noShares per id) — never derived from a
+// possibly-incomplete trade-history feed, so a position can never go missing.
+async function fetchWalletMarketPositions(address) {
+  try {
+    const provider = new ethers.providers.JsonRpcProvider(ARC_RPC);
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+    const count = Number(await contract.marketCount());
+    const ids = Array.from({ length: count }, (_, i) => i + 1);
+    const shares = await Promise.all(ids.map(id =>
+      Promise.all([contract.yesShares(id, address), contract.noShares(id, address)])
+    ));
+    return ids
+      .map((id, i) => ({ marketId: id, yes: Number(shares[i][0]) / 1e6, no: Number(shares[i][1]) / 1e6 }))
+      .filter(p => p.yes > 0 || p.no > 0);
+  } catch { return []; }
 }
 
 // ── GET USER SHARES ON-CHAIN ──────────────────────────────────────────────────
@@ -275,11 +295,18 @@ async function fetchLiveTrades() {
 
 async function fetchWalletLiveHistory(walletAddr) {
   try {
-    const url = `https://testnet.arcscan.app/api/v2/addresses/${walletAddr}/transactions?filter=to&smart_contract=${CONTRACT_ADDRESS}`;
+    // filter=from — these are the wallet's own outbound calls TO the contract,
+    // not calls where the wallet is the recipient. The smart_contract= param is
+    // silently broken on this indexer (returns 0 with any filter), so we scope
+    // to this contract client-side instead.
+    const url = `https://testnet.arcscan.app/api/v2/addresses/${walletAddr}/transactions?filter=from`;
     const res = await fetch(url);
     if (!res.ok) throw new Error();
     const data = await res.json();
-    const items = (data.items || []).filter(item => item.method === "buyShares" && item.status === "ok");
+    const items = (data.items || []).filter(item =>
+      item.method === "buyShares" && item.status === "ok" &&
+      (item.to?.hash || "").toLowerCase() === CONTRACT_ADDRESS.toLowerCase()
+    );
     const decoded = await Promise.all(items.map(async item => {
       try {
         const txRes = await fetch(`https://testnet.arcscan.app/api/v2/transactions/${item.hash}`);
@@ -364,13 +391,17 @@ async function fetchPortfolioTimeline(marketIds, account) {
   } catch {}
 
   try {
-    // refund() emits no event — fall back to the wallet's own tx history
-    const url = `https://testnet.arcscan.app/api/v2/addresses/${account}/transactions?filter=to&smart_contract=${CONTRACT_ADDRESS}`;
+    // refund() emits no event — fall back to the wallet's own tx history.
+    // filter=from since these are the wallet's own outbound calls to the
+    // contract; smart_contract= is silently broken on this indexer, so scope
+    // to this contract client-side instead.
+    const url = `https://testnet.arcscan.app/api/v2/addresses/${account}/transactions?filter=from`;
     const res = await fetch(url);
     if (res.ok) {
       const data = await res.json();
       for (const tx of (data.items || [])) {
         if (tx.method !== "refund" || tx.status !== "ok") continue;
+        if ((tx.to?.hash || "").toLowerCase() !== CONTRACT_ADDRESS.toLowerCase()) continue;
         const input = (tx.raw_input || tx.input || "").replace("0x", "");
         if (input.length < 72) continue;
         const mid = String(parseInt(input.slice(8, 72), 16));
@@ -691,25 +722,35 @@ function AdminPanel({t,account,onResolved,markets=[],walletType,walletId}){
 function Portfolio({t,account,positions,walletType,walletId}){
   const [onChain,setOnChain]=useState({});
   const [loading,setLoading]=useState(false);
+  const [hasLoaded,setHasLoaded]=useState(false);
   const [justClaimedTx,setJustClaimedTx]=useState({});
   const [tab,setTab]=useState("Positions");
 
+  // Ground truth: enumerate the wallet's positions directly on-chain
+  // (marketCount() + yesShares/noShares per id) instead of deriving which
+  // markets to show from a trade-history feed, which can silently miss
+  // markets the indexer hasn't caught up on.
   const fetchOnChain=useCallback(async()=>{
-    if(!account||positions.length===0)return;
+    if(!account)return;
     setLoading(true);
-    const ids=[...new Set(positions.map(p=>p.marketId).filter(Boolean))];
-    const results={};
-    const [,timeline]=await Promise.all([
-      Promise.all(ids.map(async id=>{
-        const [market,shares,hasClaimed]=await Promise.all([getOnChainMarket(id),getUserShares(id,account),getUserClaimed(id,account)]);
-        results[id]={market,shares,hasClaimed};
-      })),
-      fetchPortfolioTimeline(ids,account),
-    ]);
-    for(const id of ids){ if(results[id]) results[id].timeline=timeline[id]; }
-    setOnChain(results);
-    setLoading(false);
-  },[account,positions]);
+    try{
+      const walletPositions=await fetchWalletMarketPositions(account);
+      const ids=walletPositions.map(p=>String(p.marketId));
+      const results={};
+      const [,timeline]=await Promise.all([
+        Promise.all(ids.map(async id=>{
+          const [market,shares,hasClaimed]=await Promise.all([getOnChainMarket(id),getUserShares(id,account),getUserClaimed(id,account)]);
+          results[id]={market,shares,hasClaimed};
+        })),
+        fetchPortfolioTimeline(ids,account),
+      ]);
+      for(const id of ids){ if(results[id]) results[id].timeline=timeline[id]; }
+      setOnChain(results);
+    } finally {
+      setLoading(false);
+      setHasLoaded(true);
+    }
+  },[account]);
 
   useEffect(()=>{fetchOnChain();},[fetchOnChain]);
 
@@ -719,23 +760,36 @@ function Portfolio({t,account,positions,walletType,walletId}){
       <p style={{fontSize:15,color:t.textMuted}}>Connect your wallet to see your portfolio</p>
     </div>
   );
-  if(positions.length===0) return(
+  if(!hasLoaded) return(
+    <div style={{textAlign:"center",padding:"80px 20px"}}>
+      <p style={{fontSize:15,color:t.textMuted}}>Reading your positions on-chain…</p>
+    </div>
+  );
+  if(Object.keys(onChain).length===0) return(
     <div style={{textAlign:"center",padding:"80px 20px"}}>
       <div style={{fontSize:48,marginBottom:16}}>📊</div>
       <p style={{fontSize:15,color:t.textMuted}}>No positions yet — place your first trade!</p>
     </div>
   );
 
-  // Group by marketId
+  // Group by marketId — every id here is a confirmed on-chain position.
+  // Per-trade line items come from the trade-history feed when available,
+  // falling back to a summary line built straight from on-chain shares so a
+  // position is never blank just because the indexer missed the trade.
   const grouped={};
-  for(const p of positions){
-    const id=p.marketId;
-    if(!id)continue;
-    if(!grouped[id]) grouped[id]={marketId:id,market:p.market,positions:[]};
-    grouped[id].positions.push(p);
+  for(const id of Object.keys(onChain)){
+    const d=onChain[id];
+    const matchingTrades=positions.filter(p=>String(p.marketId)===String(id));
+    const lines=matchingTrades.length>0
+      ? matchingTrades
+      : [
+          ...(d.shares?.yes>0?[{side:"YES",amt:d.shares.yes}]:[]),
+          ...(d.shares?.no>0?[{side:"NO",amt:d.shares.no}]:[]),
+        ];
+    grouped[id]={marketId:id,market:d.market?.title||matchingTrades[0]?.market||`Market #${id}`,positions:lines};
   }
 
-  const totalInvested=positions.reduce((s,p)=>s+parseFloat(p.amt||0),0);
+  const totalInvested=Object.values(onChain).reduce((s,d)=>s+(d.shares?.yes||0)+(d.shares?.no||0),0);
 
   const getStatus=(id)=>{
     const d=onChain[id];
@@ -1089,13 +1143,18 @@ function Activity({t,account,newTrades=[]}){
 function History({t,account,positions,embedded}){
   const [chainData,setChainData]=useState({});
   const [loading,setLoading]=useState(false);
+  const [hasLoaded,setHasLoaded]=useState(false);
 
   useEffect(()=>{
     let cancelled=false;
     (async()=>{
-      if(!account||positions.length===0){setChainData({});return;}
+      if(!account){setChainData({});setHasLoaded(true);return;}
       setLoading(true);
-      const ids=[...new Set(positions.map(p=>p.marketId).filter(Boolean))];
+      // Ground truth: enumerate positions on-chain, same as Portfolio, so a
+      // market never disappears from History just because the indexer-backed
+      // trade feed missed it.
+      const walletPositions=await fetchWalletMarketPositions(account);
+      const ids=walletPositions.map(p=>String(p.marketId));
       const results={};
       const [,timeline]=await Promise.all([
         Promise.all(ids.map(async id=>{
@@ -1105,32 +1164,36 @@ function History({t,account,positions,embedded}){
         fetchPortfolioTimeline(ids,account),
       ]);
       for(const id of ids){ if(results[id]) results[id].timeline=timeline[id]; }
-      if(!cancelled){setChainData(results);setLoading(false);}
+      if(!cancelled){setChainData(results);setLoading(false);setHasLoaded(true);}
     })();
     return()=>{cancelled=true;};
-  },[account,positions]);
+  },[account]);
 
   const entries=React.useMemo(()=>{
     const rows=[];
-    for(const p of positions){
-      if(!p.marketId)continue;
-      const d=chainData[p.marketId];
-      const time=d?.timeline?.placedAt||p.time||null;
-      rows.push({type:"trade",time,market:p.market,side:p.side,amt:parseFloat(p.amt||0),txHash:p.txHash});
-    }
     for(const [id,d] of Object.entries(chainData)){
-      if(!d?.hasClaimed)continue;
-      const tl=d.timeline||{};
-      const isCancelled=!!d.market?.cancelled;
-      let amount=0;
-      if(isCancelled){
-        amount=(d.shares?.yes||0)+(d.shares?.no||0);
-      }else if(d.market?.resolved){
-        const total=d.market.yesPool+d.market.noPool;
-        amount=d.market.yesWon?(d.shares.yes>0?(d.shares.yes/d.market.yesPool)*total:0):(d.shares.no>0?(d.shares.no/d.market.noPool)*total:0);
+      const title=d.market?.title||`Market #${id}`;
+      const matchingTrades=positions.filter(p=>String(p.marketId)===String(id));
+      if(matchingTrades.length>0){
+        for(const p of matchingTrades){
+          rows.push({type:"trade",time:p.time||d.timeline?.placedAt||null,market:p.market||title,side:p.side,amt:parseFloat(p.amt||0),txHash:p.txHash});
+        }
+      }else{
+        if(d.shares?.yes>0) rows.push({type:"trade",time:d.timeline?.placedAt||null,market:title,side:"YES",amt:d.shares.yes});
+        if(d.shares?.no>0) rows.push({type:"trade",time:d.timeline?.placedAt||null,market:title,side:"NO",amt:d.shares.no});
       }
-      const marketTitle=positions.find(p=>String(p.marketId)===String(id))?.market||`Market #${id}`;
-      rows.push({type:isCancelled?"refund":"claim",time:tl.claimedAt,market:marketTitle,amt:amount});
+      if(d?.hasClaimed){
+        const tl=d.timeline||{};
+        const isCancelled=!!d.market?.cancelled;
+        let amount=0;
+        if(isCancelled){
+          amount=(d.shares?.yes||0)+(d.shares?.no||0);
+        }else if(d.market?.resolved){
+          const total=d.market.yesPool+d.market.noPool;
+          amount=d.market.yesWon?(d.shares.yes>0?(d.shares.yes/d.market.yesPool)*total:0):(d.shares.no>0?(d.shares.no/d.market.noPool)*total:0);
+        }
+        rows.push({type:isCancelled?"refund":"claim",time:tl.claimedAt,market:title,amt:amount});
+      }
     }
     return rows.sort((a,b)=>{
       const ta=a.time?new Date(typeof a.time==="number"?a.time*1000:a.time).getTime():0;
@@ -1145,7 +1208,12 @@ function History({t,account,positions,embedded}){
       <p style={{fontSize:15,color:t.textMuted}}>Connect your wallet to see your history</p>
     </div>
   );
-  if(positions.length===0) return(
+  if(!hasLoaded) return(
+    <div style={{textAlign:"center",padding:"80px 20px"}}>
+      <p style={{fontSize:15,color:t.textMuted}}>Reading your positions on-chain…</p>
+    </div>
+  );
+  if(entries.length===0) return(
     <div style={{textAlign:"center",padding:"80px 20px"}}>
       <div style={{fontSize:48,marginBottom:16}}>🕓</div>
       <p style={{fontSize:15,color:t.textMuted}}>No trades yet — place your first trade!</p>
