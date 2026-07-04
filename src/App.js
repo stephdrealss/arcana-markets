@@ -1267,12 +1267,12 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,
   const [hov,setHov]=useState(false);
   const yes=pct(m.yes),no=100-yes,up=m.chg>=0,sparkCol=up?t.green:t.red;
 
-  const topBarColor=isResolved?(resolvedOutcome?t.green:t.textLight):isCancelled?t.amber:isEnded?t.textMuted:hov?t.blue:t.border;
-  const cardBorderColor=isResolved?(resolvedOutcome?t.greenBorder:t.border):isCancelled?t.amber:isEnded?t.border:hov?t.cardBorderHov:t.cardBorder;
+  const topBarColor=isResolved?(resolvedOutcome?t.green:t.textLight):isCancelled?t.amber:isEnded?t.amber:hov?t.blue:t.border;
+  const cardBorderColor=isResolved?(resolvedOutcome?t.greenBorder:t.border):isCancelled?t.amber:isEnded?t.amber:hov?t.cardBorderHov:t.cardBorder;
 
   return(
     <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} onClick={()=>onTrade(m,null)}
-      style={{background:t.surface,border:`1.5px solid ${cardBorderColor}`,borderRadius:12,display:"flex",flexDirection:"column",cursor:"pointer",transition:"all 0.18s",boxShadow:hov?t.shadowHov:t.shadow,opacity:isEnded?0.65:isCancelled?0.75:1}}>
+      style={{background:t.surface,border:`1.5px solid ${cardBorderColor}`,borderRadius:12,display:"flex",flexDirection:"column",cursor:"pointer",transition:"all 0.18s",boxShadow:hov?t.shadowHov:t.shadow,opacity:isCancelled?0.75:1}}>
       <div style={{height:3,background:topBarColor,borderRadius:"10px 10px 0 0",transition:"background 0.2s"}}/>
       <div style={{padding:"15px 17px",flex:1,display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -1285,7 +1285,7 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,
           <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
             {isResolved&&<span style={{fontSize:9,fontWeight:700,color:resolvedOutcome?t.green:t.textMuted,background:resolvedOutcome?t.greenBg:t.surfaceAlt,padding:"2px 6px",borderRadius:4,fontFamily:"monospace"}}>{resolvedOutcome?"YES won":"NO won"}</span>}
             {isCancelled&&<span style={{fontSize:9,fontWeight:700,color:t.amber,background:t.amberBg,padding:"2px 6px",borderRadius:4}}>CANCELLED</span>}
-            {isEnded&&!isResolved&&!isCancelled&&<span style={{fontSize:9,fontWeight:700,color:t.textMuted,background:t.surfaceAlt,border:`1px solid ${t.border}`,padding:"2px 6px",borderRadius:4,fontFamily:"monospace"}}>ENDED</span>}
+            {isEnded&&!isResolved&&!isCancelled&&<span style={{fontSize:9,fontWeight:700,color:t.amber,background:t.amberBg,border:`1px solid ${t.amber}`,padding:"2px 6px",borderRadius:4,fontFamily:"monospace"}}>BETTING CLOSED · AWAITING RESULT</span>}
             {!isResolved&&!isCancelled&&!isEnded&&m.hot&&<span style={{fontSize:9,fontWeight:700,color:t.amber,background:t.amberBg,padding:"2px 5px",borderRadius:4}}>🔥 HOT</span>}
             {!isResolved&&!isCancelled&&!isEnded&&m.trending&&<span style={{fontSize:9,fontWeight:700,color:t.green,background:t.greenBg,padding:"2px 5px",borderRadius:4}}>↑ TREND</span>}
           </div>
@@ -1329,8 +1329,8 @@ function GridCard({m,onTrade,t,livePrice,resolvedOutcome,isResolved,isCancelled,
             CANCELLED — refund available in Portfolio
           </div>
         ):isEnded?(
-          <div style={{padding:"10px",background:t.surfaceAlt,border:`1px solid ${t.border}`,borderRadius:8,textAlign:"center",fontSize:12,fontWeight:700,color:t.textMuted,fontFamily:"monospace"}}>
-            🔒 Market ended · pending resolution
+          <div style={{padding:"10px",background:t.amberBg,border:`1px solid ${t.amber}`,borderRadius:8,textAlign:"center",fontSize:12,fontWeight:700,color:t.amber,fontFamily:"monospace"}}>
+            🔒 Betting closed · awaiting result
           </div>
         ):(
           <div style={{display:"flex",gap:8}}>
@@ -1454,8 +1454,8 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
           {isMarketEnded?(
             <div style={{textAlign:"center",padding:"16px 0"}}>
               <div style={{fontSize:40,marginBottom:12}}>🔒</div>
-              <h3 style={{fontSize:17,fontWeight:800,color:t.text,marginBottom:8}}>Market Closed</h3>
-              <p style={{fontSize:13,color:t.textMuted,lineHeight:1.6,marginBottom:16}}>This market has ended and is pending resolution.</p>
+              <h3 style={{fontSize:17,fontWeight:800,color:t.text,marginBottom:8}}>Betting Closed · Awaiting Result</h3>
+              <p style={{fontSize:13,color:t.textMuted,lineHeight:1.6,marginBottom:16}}>This market's close time has passed. Trading is closed while the result is confirmed.</p>
               <div style={{display:"flex",justifyContent:"center",marginBottom:16}}><ShareButtons m={m} t={t}/></div>
               <button onClick={onClose} style={{width:"100%",padding:"12px",background:t.blue,color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer"}}>Close</button>
             </div>
@@ -1538,7 +1538,11 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
 const CATS=["All","Trending","Crypto","Arc","Sports","Politics","Macro","Tech & AI","Culture","Science"];
 
 const nowSec = () => Math.floor(Date.now() / 1000);
-const isPastMarket = m => m.resolved || m.cancelled || (m.endTime > 0 && m.endTime < nowSec());
+// Only resolved/cancelled markets are "past" — hidden from the active grid,
+// shown only in the Resolved view. A market whose closeTime has passed but
+// isn't resolved yet is still awaiting a result and stays visible.
+const isPastMarket = m => m.resolved || m.cancelled;
+const isAwaitingResult = m => !m.resolved && !m.cancelled && m.endTime > 0 && m.endTime < nowSec();
 
 // ── SHAREABLE LINKS — routing + share helpers ─────────────────────────────────
 const slugifyCat = c => c.toLowerCase().replace(/\s+&\s+/g,"-").replace(/\s+/g,"-");
@@ -1651,7 +1655,7 @@ function LiveMarketsGrid({ t, markets, loading, onTrade, cat, setCat, q, setQ })
       {markets.length > 0 && filtered.length > 0 && (
         <div className="markets-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {filtered.map(m => {
-            const isEnded = !m.resolved && !m.cancelled && m.endTime > 0 && m.endTime < nowSec();
+            const isEnded = isAwaitingResult(m);
             return (
               <GridCard
                 key={m.id}
