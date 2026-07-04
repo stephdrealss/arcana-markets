@@ -23,7 +23,7 @@ const LS = {
 // ── CONTRACT ABI ──────────────────────────────────────────────────────────────
 const CONTRACT_ABI = [
   "function buyShares(uint256 _marketId, bool _isYes, uint256 _usdcAmount) external",
-  "function markets(uint256) external view returns (uint256 id, string title, string category, uint256 yesPool, uint256 noPool, uint256 endTime, bool resolved, bool cancelled)",
+  "function markets(uint256) external view returns (uint256 id, string title, string category, uint256 yesPool, uint256 noPool, uint256 endTime, bool resolved, bool cancelled, bool yesWon)",
   "function marketCount() external view returns (uint256)",
   "function getMarketOdds(uint256 _marketId) external view returns (uint256 yesOdds, uint256 noOdds)",
   "function resolveMarket(uint256 _marketId, bool _yesWon) external",
@@ -67,6 +67,7 @@ async function getOnChainMarket(marketId) {
       endTime: Number(m.endTime),
       resolved: m.resolved,
       cancelled: m.cancelled,
+      yesWon: m.yesWon,
     };
   } catch { return null; }
 }
@@ -122,22 +123,12 @@ async function fetchChainMarkets() {
         endTime,
         resolved: m.resolved,
         cancelled: m.cancelled,
+        yesWon: m.yesWon,
       };
     });
   } catch {
     return [];
   }
-}
-
-// ── RESOLUTION STORE ──────────────────────────────────────────────────────────
-// Contract emits MarketResolved(marketId, yesWon) but doesn't expose yesWon as a getter.
-// We store it locally after admin resolves. In a future version this reads from event logs.
-const RES_KEY = "arcana_resolutions_v2";
-function getResolutions() { return LS.get(RES_KEY, {}); }
-function saveResolution(marketId, yesWon) {
-  const r = getResolutions();
-  r[String(marketId)] = yesWon;
-  LS.set(RES_KEY, r);
 }
 
 const MC={"M1":"Market #1","M16":"Market #16","M17":"Market #17","M18":"Market #18","M19":"Market #19","M20":"Market #20","M21":"Market #21","M22":"Market #22","M23":"Market #23","M26":"OpenAI releases GPT-5 in 2026?","M2":"BTC hits $120K before July 2026?","M3":"ETH flips BTC market cap in 2026?","M4":"Spot SOL ETF approved in 2026?","M5":"USDC market cap exceeds $100B in 2026?","M6":"Arc Network mainnet launches Q2 2026?","M7":"Arc TVL surpasses $500M by end of 2026?","M8":"Arc-native DEX launches with $10M+ TVL?","M9":"Arc Architects Program reaches 5K members?","M10":"Real Madrid wins 2025-26 Champions League?","M11":"Golden State Warriors make 2026 NBA Playoffs?","M12":"Canelo Alvarez wins next fight by KO?","M13":"Lewis Hamilton wins a race in 2026 F1 season?","M14":"Tiger Woods plays in 2026 Masters?","M15":"Lionel Messi retires before end of 2026?","M24":"US passes comprehensive crypto legislation?","M25":"Fed cuts rates twice before August 2026?","M27":"Taylor Swift announces new album before June 2026?","M28":"Global average temp sets new record high in 2026?","M29":"G7 nation adopts a CBDC by end of 2026?","M30":"UK snap election called before end of 2026?","M31":"Trump approval rating above 50% before midterms?","M32":"S&P 500 hits all-time high above 6,500 in 2026?","M33":"US enters recession in 2026?","M34":"Gold hits $3,500/oz before end of 2026?","M35":"Apple Vision Pro 2 announced in 2026?","M36":"AI-generated content banned on a major platform?","M37":"Elon Musk's xAI surpasses $100B valuation?","M38":"Netflix gains more than 20M subscribers in Q1?","M39":"A Marvel film tops $2B at the box office in 2026?","M40":"NASA Artemis Moon landing happens before 2027?","M41":"A lab-grown meat product hits major US grocery chain?","M42":"Quantum computer breaks RSA-2048 encryption?","M47":"Will BTC close above $80K in 3 days?","M60":"Will ETH close above $2,400 in 7 days?","M52":"Will SOL close above $90 in 7 days?","M53":"Will Arsenal reach the UCL Final?","M54":"Will Paris beat Bayern in the UCL Semi?","M55":"Will Trump sign a crypto bill before June?","M56":"Will Met Gala go viral for a crypto outfit?","M57":"Will Google announce new Gemini at I/O?","M58":"Will Cannes open with an AI-generated film?","M59":"Will BTC dominance stay above 55% in 24h?","M75":"Will England win FIFA World Cup 2026?","M76":"Will Brazil beat Argentina in FIFA World Cup 2026?","M77":"Will Manchester City win FIFA Club World Cup 2026?","M78":"Will Real Madrid beat Chelsea in FIFA Club World Cup 2026?","M79":"Will Bitcoin hit $150,000 by end of 2026?"};
@@ -480,7 +471,6 @@ function AdminPanel({t,account,onResolved,markets=[]}){
       const tx=await contract.resolveMarket(Number(resolveId),yesWon);
       setStatus({type:"info",msg:"Waiting for confirmation..."});
       await tx.wait();
-      saveResolution(Number(resolveId),yesWon);
       onResolved();
       setStatus({type:"ok",msg:`✓ Market #${resolveId} resolved — ${outcome} won`});
       setResolveId("");
@@ -579,7 +569,7 @@ function AdminPanel({t,account,onResolved,markets=[]}){
 }
 
 // ── PORTFOLIO WITH CLAIMING ───────────────────────────────────────────────────
-function Portfolio({t,account,positions,resolutions}){
+function Portfolio({t,account,positions}){
   const [onChain,setOnChain]=useState({});
   const [loading,setLoading]=useState(false);
   const [claimed,setClaimed]=useState(()=>LS.get("arcana_claimed_v2",{}));
@@ -632,8 +622,9 @@ function Portfolio({t,account,positions,resolutions}){
   };
 
   const yesWonFor=(id)=>{
-    const v=resolutions[String(id)];
-    return v===undefined?null:v;
+    const d=onChain[id];
+    if(!d?.market||!d.market.resolved)return null;
+    return d.market.yesWon;
   };
 
   const calcPayout=(id)=>{
@@ -1180,7 +1171,7 @@ function TradeModal({m,initSide,onClose,t,account,usdcBalance,onPositionAdded,on
 // ── LIVE MARKETS GRID — reads directly from the v2 contract, no other source ──
 const CATS=["All","Trending","Crypto","Arc","Sports","Politics","Macro","Tech & AI","Culture","Science"];
 
-function LiveMarketsGrid({ t, markets, loading, resolutions, onTrade, cat, setCat, q, setQ }) {
+function LiveMarketsGrid({ t, markets, loading, onTrade, cat, setCat, q, setQ }) {
   const filtered = markets
     .filter(m => cat==="All" ? true : cat==="Trending" ? m.trending : m.cat===cat)
     .filter(m => !q || m.title.toLowerCase().includes(q.toLowerCase()));
@@ -1249,7 +1240,7 @@ function LiveMarketsGrid({ t, markets, loading, resolutions, onTrade, cat, setCa
                 m={m}
                 onTrade={(mkt, side) => onTrade(mkt, side)}
                 t={t}
-                resolvedOutcome={resolutions[String(m.id)]}
+                resolvedOutcome={m.yesWon}
                 isResolved={m.resolved}
                 isCancelled={m.cancelled}
                 isEnded={isEnded}
@@ -1287,7 +1278,6 @@ export default function ArcanaMarkets(){
   const [newTrades,setNewTrades]=useState(()=>LS.get("arcana_new_trades",[]));
   const [livePrices,setLivePrices]=useState({});
   const [tickIdx,setTickIdx]=useState(0);
-  const [resolutions,setResolutions]=useState(()=>getResolutions());
   const [isOwner,setIsOwner]=useState(false);
   const [chainMarkets,setChainMarkets]=useState([]);
   const [marketsLoading,setMarketsLoading]=useState(true);
@@ -1402,16 +1392,16 @@ export default function ArcanaMarkets(){
   },[]);
 
   // Markets, read live from the v2 contract — refreshed every 60s
-  useEffect(()=>{
-    let stopped=false;
-    const load=async()=>{
-      const list=await fetchChainMarkets();
-      if(!stopped){setChainMarkets(list);setMarketsLoading(false);}
-    };
-    load();
-    const iv=setInterval(load,60000);
-    return()=>{stopped=true;clearInterval(iv);};
+  const loadMarkets=useCallback(async()=>{
+    const list=await fetchChainMarkets();
+    setChainMarkets(list);setMarketsLoading(false);
   },[]);
+
+  useEffect(()=>{
+    loadMarkets();
+    const iv=setInterval(loadMarkets,60000);
+    return()=>clearInterval(iv);
+  },[loadMarkets]);
 
   // Live stats refresh every 60s
   useEffect(()=>{
@@ -1450,8 +1440,6 @@ export default function ArcanaMarkets(){
       return next;
     });
   },[account]);
-
-  const refreshResolutions=()=>setResolutions(getResolutions());
 
   const tick=chainMarkets[tickIdx];
 
@@ -1493,7 +1481,7 @@ export default function ArcanaMarkets(){
           </div>
           <div className="nav-links" style={{display:"flex",gap:1,overflowX:"auto",flex:1}}>
             {NAV_TABS.map(n=>(
-              <button key={n} onClick={()=>{setPage(n);if(n==="Admin")refreshResolutions();}}
+              <button key={n} onClick={()=>setPage(n)}
                 style={{padding:"6px 14px",background:page===n?t.blueDim:"none",border:"none",borderRadius:8,color:page===n?t.blue:n==="Admin"?t.purple:t.textMuted,fontSize:13,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
                 {n}{n==="Portfolio"&&positions.length>0?` (${positions.length})`:""}
               </button>
@@ -1570,7 +1558,7 @@ export default function ArcanaMarkets(){
 
         {page==="Admin"&&(
           isOwner
-            ?<AdminPanel t={t} account={account} onResolved={refreshResolutions} markets={chainMarkets}/>
+            ?<AdminPanel t={t} account={account} onResolved={loadMarkets} markets={chainMarkets}/>
             :<div style={{textAlign:"center",padding:"80px 20px"}}>
               <div style={{fontSize:48,marginBottom:16}}>🚫</div>
               <p style={{color:t.textMuted,fontSize:15}}>Owner wallet required to access this panel</p>
@@ -1578,7 +1566,7 @@ export default function ArcanaMarkets(){
         )}
 
         {page==="Portfolio"&&(
-          <Portfolio t={t} account={account} positions={positions} resolutions={resolutions}/>
+          <Portfolio t={t} account={account} positions={positions}/>
         )}
 
         {page==="Leaderboard"&&(
@@ -1616,7 +1604,7 @@ export default function ArcanaMarkets(){
               </div>
             </div>
 
-            <LiveMarketsGrid t={t} markets={chainMarkets} loading={marketsLoading} resolutions={resolutions} onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);}} cat={cat} setCat={setCat} q={q} setQ={setQ}/>
+            <LiveMarketsGrid t={t} markets={chainMarkets} loading={marketsLoading} onTrade={(mkt,side)=>{setActive(mkt);setTradeSide(side);}} cat={cat} setCat={setCat} q={q} setQ={setQ}/>
 
             <div style={{marginTop:52,background:t.navy,borderRadius:16,padding:"30px 34px",display:"flex",gap:24,alignItems:"center",flexWrap:"wrap"}}>
               <div style={{width:48,height:48,borderRadius:14,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
